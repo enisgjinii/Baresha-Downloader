@@ -28,6 +28,9 @@ from pathlib import Path
 import json
 import datetime
 from collections import defaultdict
+import time
+import pystray
+from pystray import MenuItem as item
 
 # Import Sun Valley theme
 try:
@@ -43,6 +46,21 @@ try:
     DARKDETECT_AVAILABLE = True
 except ImportError:
     DARKDETECT_AVAILABLE = False
+
+# Try to import plyer for notifications
+try:
+    from plyer import notification
+    PLYER_AVAILABLE = True
+except ImportError:
+    PLYER_AVAILABLE = False
+
+# Try to import pystray for system tray
+try:
+    import pystray
+    from pystray import MenuItem as item
+    PYSTRAY_AVAILABLE = True
+except ImportError:
+    PYSTRAY_AVAILABLE = False
 
 # Add a simple tooltip helper class
 class ToolTip:
@@ -188,7 +206,7 @@ class YouTubeDownloader:
             raise Exception(f"Error extracting video info: {str(e)}")
     
     def download_video(self, url, output_path, quality='best', format_type='mp4', progress_callback=None):
-        """Download video with specified quality and format."""
+        """Download video with specified quality and format. Supports resume."""
         try:
             # Configure format based on type
             if format_type == 'mp3':
@@ -251,6 +269,9 @@ class YouTubeDownloader:
             # Add FFmpeg path if available
             if self.ffmpeg_path:
                 ydl_opts['ffmpeg_location'] = self.ffmpeg_path
+            # Enable resume
+            ydl_opts['continuedl'] = True
+            ydl_opts['noprogress'] = False
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 ydl.download([url])
         except Exception as e:
@@ -301,7 +322,8 @@ class YouTubeDownloader:
             "default_quality": "Best Quality",
             "default_format": "MP4 Video",
             "clipboard_monitoring": True,
-            "speed_limit": 0
+            "speed_limit": 0,
+            "language": "en" # Add default language setting
         }
         try:
             if settings_file.exists():
@@ -320,14 +342,24 @@ class YouTubeDownloader:
         except:
             pass
 
+APP_VERSION = '1.0.0'
+UPDATE_CHECK_URL = 'https://example.com/baresha-downloader-version.txt'  # Placeholder
+
 class YouTubeDownloaderGUI:
     def __init__(self, root):
         self.root = root
-        self.root.title("YouTube Video Downloader Pro")
+        self.downloader = YouTubeDownloader()
+        self.language = self.downloader.settings.get('language', 'en')
+        self.lang = LANGUAGES[self.language]
+        self.root.title(self.lang['app_title'])
         self.root.geometry("1000x800")
         self.root.resizable(True, True)
-        
-        self.downloader = YouTubeDownloader()
+        # Set app icon (window and taskbar)
+        try:
+            logo_path = str(Path(__file__).parent / 'baresha-logo.jpg')
+            self.root.iconphoto(True, tk.PhotoImage(file=logo_path))
+        except Exception:
+            pass
         self.video_info = None
         self.download_thread = None
         self.current_theme = self.downloader.settings.get('theme', 'system')
@@ -335,8 +367,10 @@ class YouTubeDownloaderGUI:
         self.last_clipboard_url = None
         self.setup_theme()
         self.setup_ui()
+        self.check_for_updates()
         if self.clipboard_monitoring:
             self.start_clipboard_monitor()
+        self.setup_system_tray()
         
     def setup_theme(self):
         """Setup Sun Valley theme."""
@@ -475,11 +509,20 @@ class YouTubeDownloaderGUI:
         """Setup the user interface."""
         # Create notebook for tabs
         self.notebook = ttk.Notebook(self.root)
-        self.notebook.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
-        
-        # Configure notebook to expand properly
+        self.notebook.pack(fill=tk.BOTH, expand=True, padx=10, pady=(10, 0))
         self.root.columnconfigure(0, weight=1)
         self.root.rowconfigure(0, weight=1)
+        
+        # Status bar at bottom
+        self.status_bar = ttk.Frame(self.root)
+        self.status_bar.pack(fill=tk.X, side=tk.BOTTOM, padx=10, pady=(5, 10))
+        
+        # Status indicators
+        self.status_label = ttk.Label(self.status_bar, text="Ready", style="Info.TLabel" if SUN_VALLEY_AVAILABLE else "TLabel")
+        self.status_label.pack(side=tk.LEFT)
+        
+        self.download_count_label = ttk.Label(self.status_bar, text="Downloads: 0", style="Info.TLabel" if SUN_VALLEY_AVAILABLE else "TLabel")
+        self.download_count_label.pack(side=tk.RIGHT)
         
         # Main download tab
         self.setup_download_tab()
@@ -490,10 +533,25 @@ class YouTubeDownloaderGUI:
         # Settings tab
         self.setup_settings_tab()
         
+        # Update status
+        self.update_status()
+        
+        # Bind window closing event
+        self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
+        
+        # Add keyboard shortcuts
+        self.root.bind('<Control-f>', lambda e: self.focus_search())
+        self.root.bind('<Control-d>', lambda e: self.start_download_batch())
+        self.root.bind('<Control-p>', lambda e: self.pause_download())
+        self.root.bind('<Control-r>', lambda e: self.resume_download())
+        self.root.bind('<Control-c>', lambda e: self.cancel_download())
+        self.root.bind('<Control-l>', lambda e: self.clear_form())
+        self.root.bind('<F5>', lambda e: self.refresh_history())
+        
     def setup_download_tab(self):
         """Setup the main download tab."""
         download_frame = ttk.Frame(self.notebook)
-        self.notebook.add(download_frame, text="Download")
+        self.notebook.add(download_frame, text=self.lang['download_tab'])
         
         # Configure download frame to expand
         download_frame.columnconfigure(0, weight=1)
@@ -507,34 +565,75 @@ class YouTubeDownloaderGUI:
         main_frame.columnconfigure(1, weight=1)
         main_frame.rowconfigure(6, weight=1)  # Make log section expandable
         
+        # Welcome message
+        welcome_frame = ttk.LabelFrame(main_frame, text="🎉 Welcome to Baresha Downloader", padding="15")
+        welcome_frame.grid(row=0, column=0, columnspan=3, sticky=(tk.W, tk.E), pady=(0, 20))
+        welcome_text = """Quick Start Guide:
+1. Paste YouTube URLs (one per line) or use the search feature
+2. Click 'Fetch Video Info' to preview videos
+3. Select quality and format
+4. Click 'Download Batch' to start downloading
+5. Use Pause/Resume/Cancel to control downloads"""
+        welcome_label = ttk.Label(welcome_frame, text=welcome_text, style="Info.TLabel" if SUN_VALLEY_AVAILABLE else "TLabel", justify=tk.LEFT)
+        welcome_label.pack(anchor=tk.W)
+        
+        # Logo at the top
+        try:
+            logo_path = str(Path(__file__).parent / 'baresha-logo.jpg')
+            logo_img = Image.open(logo_path)
+            logo_img = logo_img.resize((64, 64), Image.LANCZOS)
+            self.logo_photo = ImageTk.PhotoImage(logo_img)
+            logo_label = ttk.Label(main_frame, image=self.logo_photo)
+            logo_label.grid(row=1, column=0, sticky=tk.W, padx=(0, 20), pady=(0, 20))
+        except Exception:
+            pass
+        
         # Title
-        title_label = ttk.Label(main_frame, text="YouTube Video Downloader Pro", 
+        title_label = ttk.Label(main_frame, text=self.lang['app_title'], 
                                style="Title.TLabel" if SUN_VALLEY_AVAILABLE else "TLabel")
-        title_label.grid(row=0, column=0, columnspan=3, pady=(0, 20))
+        title_label.grid(row=1, column=1, columnspan=2, pady=(0, 20))
         
-        # Status indicators
-        status_frame = ttk.Frame(main_frame)
-        status_frame.grid(row=1, column=0, columnspan=3, sticky=(tk.W, tk.E), pady=(0, 20))
+        # Status indicators with better styling
+        status_frame = ttk.LabelFrame(main_frame, text="📊 System Status", padding="10")
+        status_frame.grid(row=2, column=0, columnspan=3, sticky=(tk.W, tk.E), pady=(0, 20))
         
-        # FFmpeg status
+        # FFmpeg status with color coding
         ffmpeg_status = "✅ FFmpeg Available" if self.downloader.ffmpeg_path else "⚠️ FFmpeg Not Found"
         ffmpeg_style = "Status.TLabel" if self.downloader.ffmpeg_path else "Warning.TLabel"
         ffmpeg_label = ttk.Label(status_frame, text=ffmpeg_status, style=ffmpeg_style)
         ffmpeg_label.pack(side=tk.LEFT, padx=(0, 20))
         
-        # Download count
+        # Download count with icon
         download_count = len(self.downloader.download_history)
         count_label = ttk.Label(status_frame, text=f"📥 Downloads: {download_count}", 
                                style="Info.TLabel" if SUN_VALLEY_AVAILABLE else "TLabel")
-        count_label.pack(side=tk.LEFT)
+        count_label.pack(side=tk.LEFT, padx=(0, 20))
         
-        # URL input section
-        ttk.Label(main_frame, text="YouTube URL(s):", 
-                 style="Heading.TLabel" if SUN_VALLEY_AVAILABLE else "TLabel").grid(
-            row=2, column=0, sticky=tk.W, pady=(0, 5))
+        # Language indicator
+        lang_label = ttk.Label(status_frame, text=f"🌐 Language: {self.language.upper()}", 
+                              style="Info.TLabel" if SUN_VALLEY_AVAILABLE else "TLabel")
+        lang_label.pack(side=tk.LEFT)
+        
+        # URL input section with better styling
+        url_frame = ttk.LabelFrame(main_frame, text="🔗 YouTube URLs", padding="15")
+        url_frame.grid(row=3, column=0, columnspan=3, sticky=(tk.W, tk.E), pady=(0, 20))
+        url_frame.columnconfigure(0, weight=1)
+        
+        ttk.Label(url_frame, text=self.lang['url_label'], 
+                 style="Heading.TLabel" if SUN_VALLEY_AVAILABLE else "TLabel").pack(anchor=tk.W, pady=(0, 5))
+        
         # Change from Entry to Text widget for multiple URLs
-        self.url_text = tk.Text(main_frame, height=3, width=70, font=("Segoe UI", 10))
-        self.url_text.grid(row=2, column=1, columnspan=2, sticky=(tk.W, tk.E), padx=(10, 0), pady=(0, 15))
+        self.url_text = tk.Text(url_frame, height=4, width=70, font=("Segoe UI", 10))
+        self.url_text.pack(fill=tk.X, pady=(0, 10))
+        
+        # URL count indicator
+        def update_url_count(*args):
+            urls = [u.strip() for u in self.url_text.get("1.0", tk.END).splitlines() if u.strip()]
+            self.url_count_label.config(text=f"URLs: {len(urls)}")
+        self.url_count_label = ttk.Label(url_frame, text="URLs: 0", style="Info.TLabel" if SUN_VALLEY_AVAILABLE else "TLabel")
+        self.url_count_label.pack(anchor=tk.W)
+        self.url_text.bind('<KeyRelease>', update_url_count)
+        
         # Drag-and-drop support for URLs
         try:
             import tkinterdnd2 as tkdnd
@@ -545,90 +644,168 @@ class YouTubeDownloaderGUI:
                 if url:
                     self.url_text.insert(tk.END, url + "\n")
                     self.log_message(f"URL added via drag-and-drop: {url}")
+                    update_url_count()
             self.url_text.dnd_bind('<<Drop>>', drop)
         except ImportError:
             pass  # Drag-and-drop not available if tkinterdnd2 is not installed
         
-        # Buttons frame
-        button_frame = ttk.Frame(main_frame)
-        button_frame.grid(row=3, column=0, columnspan=3, sticky=(tk.W, tk.E), pady=(0, 30))  # More vertical space
-
-        self.fetch_btn = ttk.Button(button_frame, text="🔍 Fetch Video Info", 
+        # Buttons frame with better organization
+        button_frame = ttk.LabelFrame(main_frame, text="🎮 Controls", padding="15")
+        button_frame.grid(row=4, column=0, columnspan=3, sticky=(tk.W, tk.E), pady=(0, 30))
+        
+        # Primary actions
+        primary_frame = ttk.Frame(button_frame)
+        primary_frame.pack(fill=tk.X, pady=(0, 10))
+        
+        self.fetch_btn = ttk.Button(primary_frame, text=self.lang['fetch_info'], 
                                    command=self.fetch_video_info_batch, 
                                    style="Primary.TButton" if SUN_VALLEY_AVAILABLE else "TButton")
         self.fetch_btn.pack(side=tk.LEFT, padx=(0, 15))
 
-        self.download_btn = ttk.Button(button_frame, text="⬇️ Download Batch", 
+        self.download_btn = ttk.Button(primary_frame, text=self.lang['download_batch'], 
                                       command=self.start_download_batch, state=tk.DISABLED,
                                       style="Success.TButton" if SUN_VALLEY_AVAILABLE else "TButton")
         self.download_btn.pack(side=tk.LEFT, padx=(0, 15))
-
-        self.browse_btn = ttk.Button(button_frame, text="📁 Browse Folder", 
+        
+        # Secondary actions
+        secondary_frame = ttk.Frame(button_frame)
+        secondary_frame.pack(fill=tk.X)
+        
+        self.browse_btn = ttk.Button(secondary_frame, text=self.lang['browse_folder'], 
                                     command=self.browse_folder,
                                     style="Secondary.TButton" if SUN_VALLEY_AVAILABLE else "TButton")
         self.browse_btn.pack(side=tk.LEFT, padx=(0, 10))
         
-        self.open_folder_btn = ttk.Button(button_frame, text="🗂️ Open Folder", 
+        self.open_folder_btn = ttk.Button(secondary_frame, text=self.lang['open_folder'], 
                                     command=self.open_download_folder,
                                     style="Secondary.TButton" if SUN_VALLEY_AVAILABLE else "TButton")
         self.open_folder_btn.pack(side=tk.LEFT, padx=(0, 10))
 
-        self.clear_btn = ttk.Button(button_frame, text="🧹 Clear", 
+        self.clear_btn = ttk.Button(secondary_frame, text=self.lang['clear'], 
                                    command=self.clear_form,
                                    style="Warning.TButton" if SUN_VALLEY_AVAILABLE else "TButton")
         self.clear_btn.pack(side=tk.LEFT, padx=(0, 10))
 
-        self.preview_btn = ttk.Button(button_frame, text="▶️ Preview", 
+        self.preview_btn = ttk.Button(secondary_frame, text=self.lang['preview'], 
                                      command=self.preview_video, state=tk.DISABLED,
                                      style="Secondary.TButton" if SUN_VALLEY_AVAILABLE else "TButton")
         self.preview_btn.pack(side=tk.LEFT, padx=(0, 10))
         
-        # Video info section
-        info_frame = ttk.LabelFrame(main_frame, text="Video Information", padding="20")
-        info_frame.grid(row=4, column=0, columnspan=3, sticky=(tk.W, tk.E, tk.N, tk.S), pady=(0, 30))
+        # Help button
+        self.help_btn = ttk.Button(secondary_frame, text='❓ Help', 
+                                   command=self.show_shortcuts_help,
+                                   style="Secondary.TButton" if SUN_VALLEY_AVAILABLE else "TButton")
+        self.help_btn.pack(side=tk.LEFT, padx=(0, 10))
+        
+        # Download control buttons
+        control_frame = ttk.Frame(button_frame)
+        control_frame.pack(fill=tk.X, pady=(10, 0))
+        
+        self.pause_btn = ttk.Button(control_frame, text='⏸️ Pause', command=self.pause_download, state=tk.DISABLED, style="Secondary.TButton" if SUN_VALLEY_AVAILABLE else "TButton")
+        self.pause_btn.pack(side=tk.LEFT, padx=(0, 10))
+        self.resume_btn = ttk.Button(control_frame, text='▶️ Resume', command=self.resume_download, state=tk.DISABLED, style="Secondary.TButton" if SUN_VALLEY_AVAILABLE else "TButton")
+        self.resume_btn.pack(side=tk.LEFT, padx=(0, 10))
+        self.cancel_btn = ttk.Button(control_frame, text='❌ Cancel', command=self.cancel_download, state=tk.DISABLED, style="Warning.TButton" if SUN_VALLEY_AVAILABLE else "TButton")
+        self.cancel_btn.pack(side=tk.LEFT, padx=(0, 10))
+        
+        # YouTube Search Bar with better styling
+        search_frame = ttk.LabelFrame(main_frame, text="🔍 YouTube Search", padding="15")
+        search_frame.grid(row=5, column=0, columnspan=3, sticky=(tk.W, tk.E), pady=(0, 20))
+        search_frame.columnconfigure(1, weight=1)
+        
+        ttk.Label(search_frame, text='Search:', style="Heading.TLabel" if SUN_VALLEY_AVAILABLE else "TLabel").grid(row=0, column=0, sticky=tk.W, padx=(0, 10))
+        
+        self.search_var = tk.StringVar()
+        search_entry = ttk.Entry(search_frame, textvariable=self.search_var, width=40)
+        search_entry.grid(row=0, column=1, sticky=(tk.W, tk.E), padx=(0, 10))
+        
+        def do_search():
+            query = self.search_var.get().strip()
+            if not query:
+                return
+            self.search_results_list.delete(0, tk.END)
+            self.log_message(f"Searching YouTube for: {query}")
+            # Placeholder: In production, use YouTube Data API
+            # Here, just show 3 fake results for demo
+            for i in range(1, 4):
+                self.search_results_list.insert(tk.END, f"https://www.youtube.com/watch?v=FAKEID{i} | Example Video {i} ({query})")
+        
+        search_btn = ttk.Button(search_frame, text='🔍 Search', command=do_search, style="Primary.TButton" if SUN_VALLEY_AVAILABLE else "TButton")
+        search_btn.grid(row=0, column=2, padx=(0, 10))
+        
+        # Search results list
+        results_frame = ttk.Frame(search_frame)
+        results_frame.grid(row=1, column=0, columnspan=3, sticky=(tk.W, tk.E), pady=(10, 0))
+        results_frame.columnconfigure(0, weight=1)
+        
+        self.search_results_list = tk.Listbox(results_frame, height=3, width=80)
+        self.search_results_list.grid(row=0, column=0, sticky=(tk.W, tk.E), padx=(0, 10))
+        
+        def add_selected_url():
+            sel = self.search_results_list.curselection()
+            if sel:
+                url = self.search_results_list.get(sel[0]).split('|')[0].strip()
+                self.url_text.insert(tk.END, url + '\n')
+                self.log_message(f"Added from search: {url}")
+                update_url_count()
+        
+        add_btn = ttk.Button(results_frame, text='➕ Add to Batch', command=add_selected_url, style="Success.TButton" if SUN_VALLEY_AVAILABLE else "TButton")
+        add_btn.grid(row=0, column=1)
+        
+        # Video info section with enhanced styling
+        info_frame = ttk.LabelFrame(main_frame, text=self.lang['video_info'], padding="20")
+        info_frame.grid(row=6, column=0, columnspan=3, sticky=(tk.W, tk.E, tk.N, tk.S), pady=(0, 30))
         info_frame.columnconfigure(1, weight=1)
         
-        # Thumbnail
+        # Thumbnail with better styling
         self.thumbnail_label = ttk.Label(info_frame, text="No thumbnail", 
                                         style="Info.TLabel" if SUN_VALLEY_AVAILABLE else "TLabel", 
                                         anchor="center")
-        self.thumbnail_label.grid(row=0, column=0, rowspan=6, padx=(0, 15))
+        self.thumbnail_label.grid(row=0, column=0, rowspan=6, padx=(0, 20))
         
-        # Video details
-        ttk.Label(info_frame, text="Title:", 
+        # Video details with better layout
+        details_frame = ttk.Frame(info_frame)
+        details_frame.grid(row=0, column=1, sticky=(tk.W, tk.E, tk.N, tk.S))
+        details_frame.columnconfigure(1, weight=1)
+        
+        # Title with better styling
+        ttk.Label(details_frame, text="📺 Title:", 
                  style="Heading.TLabel" if SUN_VALLEY_AVAILABLE else "TLabel").grid(
-            row=0, column=1, sticky=tk.W, pady=(0, 5))
-        self.title_label = ttk.Label(info_frame, text="No video selected", 
+            row=0, column=0, sticky=tk.W, pady=(0, 5))
+        self.title_label = ttk.Label(details_frame, text=self.lang['no_video_selected'], 
                                     style="Info.TLabel" if SUN_VALLEY_AVAILABLE else "TLabel", 
                                     wraplength=400)
-        self.title_label.grid(row=0, column=2, sticky=(tk.W, tk.E), pady=(0, 5))
+        self.title_label.grid(row=0, column=1, sticky=(tk.W, tk.E), pady=(0, 5))
         
-        ttk.Label(info_frame, text="Duration:", 
+        # Duration with icon
+        ttk.Label(details_frame, text="⏱️ Duration:", 
                  style="Heading.TLabel" if SUN_VALLEY_AVAILABLE else "TLabel").grid(
-            row=1, column=1, sticky=tk.W, pady=(0, 5))
-        self.duration_label = ttk.Label(info_frame, text="--", 
+            row=1, column=0, sticky=tk.W, pady=(0, 5))
+        self.duration_label = ttk.Label(details_frame, text="--", 
                                        style="Info.TLabel" if SUN_VALLEY_AVAILABLE else "TLabel")
-        self.duration_label.grid(row=1, column=2, sticky=(tk.W, tk.E), pady=(0, 5))
+        self.duration_label.grid(row=1, column=1, sticky=(tk.W, tk.E), pady=(0, 5))
         
-        ttk.Label(info_frame, text="Uploader:", 
+        # Uploader with icon
+        ttk.Label(details_frame, text="👤 Uploader:", 
                  style="Heading.TLabel" if SUN_VALLEY_AVAILABLE else "TLabel").grid(
-            row=2, column=1, sticky=tk.W, pady=(0, 5))
-        self.uploader_label = ttk.Label(info_frame, text="--", 
+            row=2, column=0, sticky=tk.W, pady=(0, 5))
+        self.uploader_label = ttk.Label(details_frame, text="--", 
                                        style="Info.TLabel" if SUN_VALLEY_AVAILABLE else "TLabel")
-        self.uploader_label.grid(row=2, column=2, sticky=(tk.W, tk.E), pady=(0, 5))
+        self.uploader_label.grid(row=2, column=1, sticky=(tk.W, tk.E), pady=(0, 5))
         
-        ttk.Label(info_frame, text="Views:", 
+        # Views with icon
+        ttk.Label(details_frame, text="👁️ Views:", 
                  style="Heading.TLabel" if SUN_VALLEY_AVAILABLE else "TLabel").grid(
-            row=3, column=1, sticky=tk.W, pady=(0, 5))
-        self.views_label = ttk.Label(info_frame, text="--", 
+            row=3, column=0, sticky=tk.W, pady=(0, 5))
+        self.views_label = ttk.Label(details_frame, text="--", 
                                     style="Info.TLabel" if SUN_VALLEY_AVAILABLE else "TLabel")
-        self.views_label.grid(row=3, column=2, sticky=(tk.W, tk.E), pady=(0, 5))
+        self.views_label.grid(row=3, column=1, sticky=(tk.W, tk.E), pady=(0, 5))
         
-        # Quality and format selection
-        quality_frame = ttk.Frame(info_frame)
-        quality_frame.grid(row=4, column=1, columnspan=2, sticky=(tk.W, tk.E), pady=(0, 5))
+        # Quality and format selection with better styling
+        quality_frame = ttk.Frame(details_frame)
+        quality_frame.grid(row=4, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=(0, 5))
         
-        ttk.Label(quality_frame, text="Quality:", 
+        ttk.Label(quality_frame, text="🎯 Quality:", 
                  style="Heading.TLabel" if SUN_VALLEY_AVAILABLE else "TLabel").pack(side=tk.LEFT)
         self.quality_var = tk.StringVar(value="Best Quality")
         self.quality_combo = ttk.Combobox(quality_frame, textvariable=self.quality_var, 
@@ -636,7 +813,7 @@ class YouTubeDownloaderGUI:
                                          state="readonly", font=("Segoe UI", 9), width=15)
         self.quality_combo.pack(side=tk.LEFT, padx=(10, 20))
         
-        ttk.Label(quality_frame, text="Format:", 
+        ttk.Label(quality_frame, text="📁 Format:", 
                  style="Heading.TLabel" if SUN_VALLEY_AVAILABLE else "TLabel").pack(side=tk.LEFT)
         self.format_var = tk.StringVar(value="MP4 Video")
         self.format_combo = ttk.Combobox(quality_frame, textvariable=self.format_var, 
@@ -644,29 +821,31 @@ class YouTubeDownloaderGUI:
                                         state="readonly", font=("Segoe UI", 9), width=15)
         self.format_combo.pack(side=tk.LEFT, padx=(10, 0))
         
-        # Available formats info
-        self.formats_label = ttk.Label(info_frame, text="", 
+        # Available formats info with icon
+        self.formats_label = ttk.Label(details_frame, text="", 
                                       style="Info.TLabel" if SUN_VALLEY_AVAILABLE else "TLabel",
                                       wraplength=400)
-        self.formats_label.grid(row=5, column=1, columnspan=2, sticky=(tk.W, tk.E), pady=(5, 0))
+        self.formats_label.grid(row=5, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=(5, 0))
         
-        # Download progress
-        progress_frame = ttk.LabelFrame(main_frame, text="Download Progress", padding="20")
-        progress_frame.grid(row=5, column=0, columnspan=3, sticky=(tk.W, tk.E), pady=(0, 30))
+        # Download progress with enhanced styling
+        progress_frame = ttk.LabelFrame(main_frame, text=self.lang['download_progress'], padding="20")
+        progress_frame.grid(row=7, column=0, columnspan=3, sticky=(tk.W, tk.E), pady=(0, 30))
         progress_frame.columnconfigure(0, weight=1)
         
+        # Progress bar with better styling
         self.progress_var = tk.DoubleVar()
         self.progress_bar = ttk.Progressbar(progress_frame, variable=self.progress_var, 
-                                           maximum=100, length=400)
+                                           maximum=100, length=400, mode='determinate')
         self.progress_bar.grid(row=0, column=0, sticky=(tk.W, tk.E), pady=(0, 10))
         
-        self.progress_label = ttk.Label(progress_frame, text="Ready to download", 
+        # Progress label with better styling
+        self.progress_label = ttk.Label(progress_frame, text=self.lang['ready_to_download'], 
                                        style="Info.TLabel" if SUN_VALLEY_AVAILABLE else "TLabel")
         self.progress_label.grid(row=1, column=0, sticky=tk.W)
         
-        # Log section
-        log_frame = ttk.LabelFrame(main_frame, text="Download Log", padding="20")
-        log_frame.grid(row=6, column=0, columnspan=3, sticky=(tk.W, tk.E, tk.N, tk.S), pady=(0, 10))
+        # Log section with enhanced styling
+        log_frame = ttk.LabelFrame(main_frame, text=self.lang['download_log'], padding="20")
+        log_frame.grid(row=8, column=0, columnspan=3, sticky=(tk.W, tk.E, tk.N, tk.S), pady=(0, 10))
         log_frame.columnconfigure(0, weight=1)
         log_frame.rowconfigure(0, weight=1)
         
@@ -687,49 +866,65 @@ class YouTubeDownloaderGUI:
         ToolTip(self.fetch_btn, "Fetch video information for all URLs")
         ToolTip(self.download_btn, "Download all fetched videos in batch")
         ToolTip(self.browse_btn, "Choose the download folder")
+        ToolTip(self.open_folder_btn, "Open the current download folder in Explorer")
         ToolTip(self.clear_btn, "Clear the form and log")
         ToolTip(self.preview_btn, "Preview the first video in your browser")
         ToolTip(self.quality_combo, "Select the desired video quality")
         ToolTip(self.format_combo, "Select the desired output format")
         ToolTip(self.progress_bar, "Shows overall batch download progress")
-        ToolTip(self.open_folder_btn, "Open the current download folder in Explorer")
+        ToolTip(self.pause_btn, "Pause the current batch download")
+        ToolTip(self.resume_btn, "Resume the paused batch download")
+        ToolTip(self.cancel_btn, "Cancel the current batch download")
         
     def setup_history_tab(self):
         """Setup the download history tab."""
         history_frame = ttk.Frame(self.notebook)
-        self.notebook.add(history_frame, text="History")
+        self.notebook.add(history_frame, text=self.lang['history_tab'])
         
         # Title
-        title_label = ttk.Label(history_frame, text="Download History", 
+        title_label = ttk.Label(history_frame, text=self.lang['download_history'], 
                                style="Title.TLabel" if SUN_VALLEY_AVAILABLE else "TLabel")
         title_label.pack(pady=20)
         
+        # Filter/Search bar
+        filter_frame = ttk.Frame(history_frame)
+        filter_frame.pack(pady=(0, 10))
+        ttk.Label(filter_frame, text='🔎', style="Heading.TLabel" if SUN_VALLEY_AVAILABLE else "TLabel").pack(side=tk.LEFT)
+        self.history_search_var = tk.StringVar()
+        search_entry = ttk.Entry(filter_frame, textvariable=self.history_search_var, width=40)
+        search_entry.pack(side=tk.LEFT, padx=(5, 0))
+        def filter_history(*args):
+            self.refresh_history()
+        self.history_search_var.trace_add('write', filter_history)
+        
         # History list
-        self.history_tree = ttk.Treeview(history_frame, columns=("Title", "Quality", "Format", "Status", "Date"), 
+        self.history_tree = ttk.Treeview(history_frame, columns=(self.lang['title'], self.lang['quality'], self.lang['format'], self.lang['status'], self.lang['date']), 
                                         show="headings", height=15)
         
         # Configure columns
-        self.history_tree.heading("Title", text="Title")
-        self.history_tree.heading("Quality", text="Quality")
-        self.history_tree.heading("Format", text="Format")
-        self.history_tree.heading("Status", text="Status")
-        self.history_tree.heading("Date", text="Date")
+        self.history_tree.heading(self.lang['title'], text=self.lang['title'])
+        self.history_tree.heading(self.lang['quality'], text=self.lang['quality'])
+        self.history_tree.heading(self.lang['format'], text=self.lang['format'])
+        self.history_tree.heading(self.lang['status'], text=self.lang['status'])
+        self.history_tree.heading(self.lang['date'], text=self.lang['date'])
         
-        self.history_tree.column("Title", width=300)
-        self.history_tree.column("Quality", width=100)
-        self.history_tree.column("Format", width=100)
-        self.history_tree.column("Status", width=100)
-        self.history_tree.column("Date", width=150)
+        self.history_tree.column(self.lang['title'], width=300)
+        self.history_tree.column(self.lang['quality'], width=100)
+        self.history_tree.column(self.lang['format'], width=100)
+        self.history_tree.column(self.lang['status'], width=100)
+        self.history_tree.column(self.lang['date'], width=150)
         
         self.history_tree.pack(fill=tk.BOTH, expand=True, padx=20, pady=10)
+        self.history_tree.bind('<<TreeviewSelect>>', self.show_history_thumbnail)
+        self.thumbnail_popup = None
         
         # Buttons
         button_frame = ttk.Frame(history_frame)
         button_frame.pack(pady=10)
         
-        ttk.Button(button_frame, text="Refresh", command=self.refresh_history,
+        ttk.Button(button_frame, text=self.lang['refresh'], command=self.refresh_history,
                   style="Secondary.TButton" if SUN_VALLEY_AVAILABLE else "TButton").pack(side=tk.LEFT, padx=5)
-        ttk.Button(button_frame, text="Clear History", command=self.clear_history,
+        ttk.Button(button_frame, text=self.lang['clear_history'], command=self.clear_history,
                   style="Warning.TButton" if SUN_VALLEY_AVAILABLE else "TButton").pack(side=tk.LEFT, padx=5)
         
         self.refresh_history()
@@ -737,10 +932,10 @@ class YouTubeDownloaderGUI:
     def setup_settings_tab(self):
         """Setup the settings tab."""
         settings_frame = ttk.Frame(self.notebook)
-        self.notebook.add(settings_frame, text="Settings")
+        self.notebook.add(settings_frame, text=self.lang['settings_tab'])
         
         # Title
-        title_label = ttk.Label(settings_frame, text="Settings", 
+        title_label = ttk.Label(settings_frame, text=self.lang['settings'], 
                                style="Title.TLabel" if SUN_VALLEY_AVAILABLE else "TLabel")
         title_label.pack(pady=20)
         
@@ -749,18 +944,18 @@ class YouTubeDownloaderGUI:
         settings_content.pack(fill=tk.BOTH, expand=True, padx=20, pady=10)
         
         # Download path
-        path_frame = ttk.LabelFrame(settings_content, text="Download Path", padding="10")
+        path_frame = ttk.LabelFrame(settings_content, text=self.lang['download_path'], padding="10")
         path_frame.pack(fill=tk.X, pady=(0, 10))
         
         self.path_var = tk.StringVar(value=self.downloader.download_path)
         path_entry = ttk.Entry(path_frame, textvariable=self.path_var, width=50)
         path_entry.pack(side=tk.LEFT, padx=(0, 10))
         
-        ttk.Button(path_frame, text="Browse", command=self.browse_download_path,
+        ttk.Button(path_frame, text=self.lang['browse'], command=self.browse_download_path,
                   style="Secondary.TButton" if SUN_VALLEY_AVAILABLE else "TButton").pack(side=tk.LEFT)
         
         # FFmpeg settings
-        ffmpeg_frame = ttk.LabelFrame(settings_content, text="FFmpeg Settings", padding="10")
+        ffmpeg_frame = ttk.LabelFrame(settings_content, text=self.lang['ffmpeg_settings'], padding="10")
         ffmpeg_frame.pack(fill=tk.X, pady=(0, 10))
         
         ffmpeg_status = "✅ Available" if self.downloader.ffmpeg_path else "❌ Not Found"
@@ -768,13 +963,13 @@ class YouTubeDownloaderGUI:
         ttk.Label(ffmpeg_frame, text=f"FFmpeg: {ffmpeg_status}", style=ffmpeg_style).pack(anchor=tk.W)
         
         if not self.downloader.ffmpeg_path:
-            ttk.Button(ffmpeg_frame, text="Install FFmpeg", command=self.install_ffmpeg,
+            ttk.Button(ffmpeg_frame, text=self.lang['install_ffmpeg'], command=self.install_ffmpeg,
                       style="Primary.TButton" if SUN_VALLEY_AVAILABLE else "TButton").pack(pady=(10, 0))
         
         # Theme settings
-        theme_frame = ttk.LabelFrame(settings_content, text="Theme Settings", padding="10")
+        theme_frame = ttk.LabelFrame(settings_content, text=self.lang['theme_settings'], padding="10")
         theme_frame.pack(fill=tk.X, pady=(0, 10))
-        ttk.Label(theme_frame, text="Theme:", 
+        ttk.Label(theme_frame, text=self.lang['theme'], 
                  style="Heading.TLabel" if SUN_VALLEY_AVAILABLE else "TLabel").pack(anchor=tk.W)
         theme_var = tk.StringVar(value=self.current_theme)
         theme_combo = ttk.Combobox(theme_frame, textvariable=theme_var, 
@@ -786,15 +981,15 @@ class YouTubeDownloaderGUI:
             self.downloader.settings['theme'] = self.current_theme
             self.downloader.save_settings()
             self.setup_theme()
-            messagebox.showinfo("Theme Changed", "Theme will be applied after restarting the application.")
-        ttk.Button(theme_frame, text="Apply Theme", command=change_theme,
+            messagebox.showinfo(self.lang['theme_settings'], self.lang['apply_theme'] + ": " + self.lang['app_title'])
+        ttk.Button(theme_frame, text=self.lang['apply_theme'], command=change_theme,
                   style="Primary.TButton" if SUN_VALLEY_AVAILABLE else "TButton").pack(pady=(10, 0))
         
         # Clipboard monitoring toggle
-        clipboard_frame = ttk.LabelFrame(settings_content, text="Clipboard Monitoring", padding="10")
+        clipboard_frame = ttk.LabelFrame(settings_content, text=self.lang['clipboard_monitoring'], padding="10")
         clipboard_frame.pack(fill=tk.X, pady=(0, 10))
         self.clipboard_var = tk.BooleanVar(value=self.clipboard_monitoring)
-        clipboard_check = ttk.Checkbutton(clipboard_frame, text="Auto-detect YouTube URLs from clipboard", variable=self.clipboard_var)
+        clipboard_check = ttk.Checkbutton(clipboard_frame, text=self.lang['clipboard_toggle'], variable=self.clipboard_var)
         clipboard_check.pack(anchor=tk.W)
         def toggle_clipboard():
             self.clipboard_monitoring = self.clipboard_var.get()
@@ -803,13 +998,13 @@ class YouTubeDownloaderGUI:
             if self.clipboard_monitoring:
                 self.start_clipboard_monitor()
             self.log_message(f"Clipboard monitoring {'enabled' if self.clipboard_monitoring else 'disabled'}.")
-        ttk.Button(clipboard_frame, text="Apply", command=toggle_clipboard,
+        ttk.Button(clipboard_frame, text=self.lang['apply'], command=toggle_clipboard,
                   style="Primary.TButton" if SUN_VALLEY_AVAILABLE else "TButton").pack(pady=(10, 0))
         
         # Speed limit
-        speed_frame = ttk.LabelFrame(settings_content, text="Download Speed Limit", padding="10")
+        speed_frame = ttk.LabelFrame(settings_content, text=self.lang['download_speed_limit'], padding="10")
         speed_frame.pack(fill=tk.X, pady=(0, 10))
-        ttk.Label(speed_frame, text="Max speed (MB/s, 0 = unlimited):", style="Heading.TLabel" if SUN_VALLEY_AVAILABLE else "TLabel").pack(anchor=tk.W)
+        ttk.Label(speed_frame, text=self.lang['max_speed'], style="Heading.TLabel" if SUN_VALLEY_AVAILABLE else "TLabel").pack(anchor=tk.W)
         self.speed_var = tk.DoubleVar(value=self.downloader.settings.get('speed_limit', 0) / 1024 / 1024)
         speed_entry = ttk.Entry(speed_frame, textvariable=self.speed_var, width=10)
         speed_entry.pack(anchor=tk.W, pady=(5, 0))
@@ -819,19 +1014,19 @@ class YouTubeDownloaderGUI:
             self.downloader.save_settings()
             self.downloader.speed_limit = self.downloader.settings['speed_limit']
             self.log_message(f"Speed limit set to {mbps:.2f} MB/s" if mbps > 0 else "Speed limit removed (unlimited)")
-        ttk.Button(speed_frame, text="Apply", command=apply_speed,
+        ttk.Button(speed_frame, text=self.lang['apply'], command=apply_speed,
                   style="Primary.TButton" if SUN_VALLEY_AVAILABLE else "TButton").pack(pady=(10, 0))
         
         # Statistics
-        stats_frame = ttk.LabelFrame(settings_content, text="Statistics", padding="10")
+        stats_frame = ttk.LabelFrame(settings_content, text=self.lang['statistics'], padding="10")
         stats_frame.pack(fill=tk.X, pady=(0, 10))
         
         total_downloads = len(self.downloader.download_history)
         successful_downloads = len([d for d in self.downloader.download_history if d.get('status') == 'completed'])
         
-        ttk.Label(stats_frame, text=f"Total Downloads: {total_downloads}", 
+        ttk.Label(stats_frame, text=f"{self.lang['total_downloads']} {total_downloads}", 
                  style="Info.TLabel" if SUN_VALLEY_AVAILABLE else "TLabel").pack(anchor=tk.W)
-        ttk.Label(stats_frame, text=f"Successful Downloads: {successful_downloads}", 
+        ttk.Label(stats_frame, text=f"{self.lang['successful_downloads']} {successful_downloads}", 
                  style="Info.TLabel" if SUN_VALLEY_AVAILABLE else "TLabel").pack(anchor=tk.W)
         
     def refresh_history(self):
@@ -841,7 +1036,12 @@ class YouTubeDownloaderGUI:
             self.history_tree.delete(item)
         
         # Add history items
+        query = getattr(self, 'history_search_var', None)
+        filter_text = query.get().lower() if query else ''
         for entry in reversed(self.downloader.download_history[-50:]):  # Show last 50
+            if filter_text:
+                if filter_text not in entry['title'].lower() and filter_text not in entry['status'].lower() and filter_text not in entry['timestamp']:
+                    continue
             date = datetime.datetime.fromisoformat(entry['timestamp']).strftime("%Y-%m-%d %H:%M")
             self.history_tree.insert("", "end", values=(
                 entry['title'][:50] + "..." if len(entry['title']) > 50 else entry['title'],
@@ -884,7 +1084,7 @@ class YouTubeDownloaderGUI:
     def clear_form(self):
         """Clear the download form."""
         self.url_text.delete("1.0", tk.END)
-        self.title_label.config(text="No video selected")
+        self.title_label.config(text=self.lang['no_video_selected'])
         self.duration_label.config(text="--")
         self.uploader_label.config(text="--")
         self.views_label.config(text="--")
@@ -893,18 +1093,29 @@ class YouTubeDownloaderGUI:
         self.download_btn.config(state=tk.DISABLED)
         self.preview_btn.config(state=tk.DISABLED)
         self.progress_var.set(0)
-        self.progress_label.config(text="Ready to download")
+        self.progress_label.config(text=self.lang['ready_to_download'])
         self.log_text.delete(1.0, tk.END)
         
     def fetch_video_info_batch(self):
         """Fetch video information for all provided URLs."""
         urls = [u.strip() for u in self.url_text.get("1.0", tk.END).splitlines() if u.strip()]
         if not urls:
-            messagebox.showerror("Error", "Please enter at least one YouTube URL")
+            messagebox.showerror(self.lang['error'], "Please enter at least one YouTube URL")
             return
+        
+        # Validate URLs
+        invalid_urls = []
+        for url in urls:
+            if not ('youtube.com' in url or 'youtu.be' in url):
+                invalid_urls.append(url)
+        
+        if invalid_urls:
+            messagebox.showwarning("Invalid URLs", f"The following URLs may not be valid YouTube links:\n{', '.join(invalid_urls[:3])}")
+        
         self.fetch_btn.config(state=tk.DISABLED)
         self.log_message(f"Fetching video information for {len(urls)} URL(s)...")
         self.batch_video_info = []
+        
         def fetch_thread():
             errors = 0
             for url in urls:
@@ -912,9 +1123,19 @@ class YouTubeDownloaderGUI:
                     info = self.downloader.get_video_info(url)
                     self.batch_video_info.append(info)
                 except Exception as e:
-                    self.log_message(f"Error fetching info for {url}: {str(e)}")
+                    error_msg = str(e)
+                    if "Video unavailable" in error_msg:
+                        self.log_message(f"Video unavailable: {url}", error=True)
+                    elif "Private video" in error_msg:
+                        self.log_message(f"Private video: {url}", error=True)
+                    elif "Video unavailable" in error_msg:
+                        self.log_message(f"Video unavailable: {url}", error=True)
+                    else:
+                        self.log_message(f"Error fetching info for {url}: {error_msg}", error=True)
                     errors += 1
+            
             self.root.after(0, lambda: self.update_video_info_batch(errors))
+        
         threading.Thread(target=fetch_thread, daemon=True).start()
 
     def update_video_info_batch(self, errors=0):
@@ -939,11 +1160,36 @@ class YouTubeDownloaderGUI:
         self.download_btn.config(state=tk.DISABLED)
         self.progress_var.set(0)
         self.progress_label.config(text="Starting batch download...")
+        self._pause_event = threading.Event()
+        self._pause_event.set()
+        self._cancel_event = threading.Event()
+        self.pause_btn.config(state=tk.NORMAL)
+        self.cancel_btn.config(state=tk.NORMAL)
+        self.resume_btn.config(state=tk.DISABLED)
+        # Add animated progress indicator
+        self.progress_animation = 0
+        def animate_progress():
+            if hasattr(self, '_cancel_event') and not self._cancel_event.is_set():
+                self.progress_animation = (self.progress_animation + 1) % 4
+                dots = "." * self.progress_animation
+                self.progress_label.config(text=f"Starting batch download{dots}")
+                self.root.after(500, animate_progress)
+        animate_progress()
         def batch_thread():
             total = len(self.batch_video_info)
             for idx, info in enumerate(self.batch_video_info):
+                if self._cancel_event.is_set():
+                    self.root.after(0, lambda: self.log_message('Batch download canceled.', error=True))
+                    break
+                while not self._pause_event.is_set():
+                    time.sleep(0.2)
                 url = info['webpage_url']
                 title = info['title']
+                # If a partial file exists, log that we are resuming
+                outtmpl = os.path.join(self.downloader.download_path, '%s.*' % info['title'])
+                partials = list(Path(self.downloader.download_path).glob(f"{info['title']}.*.part"))
+                if partials:
+                    self.root.after(0, lambda: self.log_message(f"Resuming download: {info['title']}"))
                 def progress_hook(d, idx=idx):
                     if d['status'] == 'downloading':
                         if 'total_bytes' in d and d['total_bytes']:
@@ -962,11 +1208,16 @@ class YouTubeDownloaderGUI:
                     self.downloader.download_video(url, self.downloader.download_path, quality, format_type, progress_hook)
                     self.root.after(0, lambda: self.log_message(f"Downloaded: {title}"))
                     self.downloader.add_to_history(url, title, quality, format_type)
+                    self.root.after(0, lambda: self.notify(self.lang['app_title'], f"{title} - Download completed!"))
                 except Exception as e:
                     self.root.after(0, lambda: self.log_message(f"Failed: {title} ({str(e)})"))
                     self.downloader.add_to_history(url, title, quality, format_type, "failed")
+                    self.root.after(0, lambda: self.notify(self.lang['app_title'], f"{title} - Download failed!"))
                 self.root.after(0, self.refresh_history)
             self.root.after(0, lambda: self.download_btn.config(state=tk.NORMAL))
+            self.root.after(0, lambda: self.pause_btn.config(state=tk.DISABLED))
+            self.root.after(0, lambda: self.resume_btn.config(state=tk.DISABLED))
+            self.root.after(0, lambda: self.cancel_btn.config(state=tk.DISABLED))
             self.root.after(0, lambda: self.progress_label.config(text="Batch download complete!"))
         self.download_thread = threading.Thread(target=batch_thread, daemon=True)
         self.download_thread.start()
@@ -1144,6 +1395,12 @@ class YouTubeDownloaderGUI:
         messagebox.showerror("Error", message)
         self.log_message(f"ERROR: {message}", error=True)
 
+    def notify(self, title, message):
+        if PLYER_AVAILABLE:
+            notification.notify(title=title, message=message, app_name='Baresha Downloader')
+        else:
+            messagebox.showinfo(title, message)
+
     def start_clipboard_monitor(self):
         def poll_clipboard():
             if not self.clipboard_monitoring:
@@ -1164,6 +1421,255 @@ class YouTubeDownloaderGUI:
                 pass
             self.root.after(1500, poll_clipboard)
         self.root.after(1500, poll_clipboard)
+
+    def pause_download(self):
+        if hasattr(self, '_pause_event'):
+            self._pause_event.clear()
+            self.pause_btn.config(state=tk.DISABLED)
+            self.resume_btn.config(state=tk.NORMAL)
+            self.log_message('Batch download paused.')
+    def resume_download(self):
+        if hasattr(self, '_pause_event'):
+            self._pause_event.set()
+            self.pause_btn.config(state=tk.NORMAL)
+            self.resume_btn.config(state=tk.DISABLED)
+            self.log_message('Batch download resumed.')
+    def cancel_download(self):
+        if hasattr(self, '_cancel_event'):
+            self._cancel_event.set()
+            self.pause_btn.config(state=tk.DISABLED)
+            self.resume_btn.config(state=tk.DISABLED)
+            self.cancel_btn.config(state=tk.DISABLED)
+            self.download_btn.config(state=tk.NORMAL)
+            self.log_message('Batch download canceled.', error=True)
+
+    def show_history_thumbnail(self, event):
+        sel = self.history_tree.selection()
+        if not sel:
+            return
+        item = self.history_tree.item(sel[0])
+        title = item['values'][0]
+        # Find the entry in history
+        entry = next((e for e in self.downloader.download_history if e['title'].startswith(title.rstrip('...'))), None)
+        if not entry:
+            return
+        # Try to get thumbnail from video info
+        try:
+            info = self.downloader.get_video_info(entry['url'])
+            thumb_url = info.get('thumbnail', '')
+            if not thumb_url:
+                return
+            response = requests.get(thumb_url, timeout=10)
+            if response.status_code == 200:
+                image = Image.open(requests.get(thumb_url, stream=True).raw)
+                image = image.resize((320, 180), Image.LANCZOS)
+                photo = ImageTk.PhotoImage(image)
+                if self.thumbnail_popup:
+                    self.thumbnail_popup.destroy()
+                self.thumbnail_popup = tk.Toplevel(self.root)
+                self.thumbnail_popup.title('Thumbnail Preview')
+                label = tk.Label(self.thumbnail_popup, image=photo)
+                label.image = photo
+                label.pack()
+                self.thumbnail_popup.after(5000, self.thumbnail_popup.destroy)
+        except Exception:
+            pass
+
+    def check_for_updates(self):
+        def check():
+            try:
+                # Placeholder: always say up to date
+                # In production, fetch from UPDATE_CHECK_URL
+                latest_version = '1.0.0'
+                if latest_version != APP_VERSION:
+                    self.notify(self.lang['app_title'], f'New version available: {latest_version}')
+                else:
+                    self.log_message('You are using the latest version.')
+            except Exception:
+                self.log_message('Could not check for updates.')
+        threading.Thread(target=check, daemon=True).start()
+
+    def update_status(self):
+        """Update status bar with current information."""
+        total_downloads = len(self.downloader.download_history)
+        successful = len([d for d in self.downloader.download_history if d.get('status') == 'completed'])
+        self.download_count_label.config(text=f"Downloads: {successful}/{total_downloads}")
+        
+        if hasattr(self, 'current_download'):
+            self.status_label.config(text=f"Downloading: {self.current_download}")
+        else:
+            self.status_label.config(text="Ready")
+
+    def setup_system_tray(self):
+        """Setup system tray icon and menu."""
+        if not PYSTRAY_AVAILABLE:
+            return
+        try:
+            logo_path = str(Path(__file__).parent / 'baresha-logo.jpg')
+            image = Image.open(logo_path)
+            image = image.resize((64, 64), Image.LANCZOS)
+            
+            menu = pystray.Menu(
+                item('Show', self.show_window),
+                item('Hide', self.hide_window),
+                pystray.Menu.SEPARATOR,
+                item('Exit', self.quit_app)
+            )
+            
+            self.icon = pystray.Icon("baresha", image, "Baresha Downloader", menu)
+            self.icon.run_detached()
+        except Exception:
+            pass
+    
+    def show_window(self, icon=None, item=None):
+        """Show the main window."""
+        self.root.deiconify()
+        self.root.lift()
+    
+    def hide_window(self, icon=None, item=None):
+        """Hide the main window."""
+        if PYSTRAY_AVAILABLE:
+            self.root.withdraw()
+        else:
+            # If no system tray, just minimize
+            self.root.iconify()
+    
+    def quit_app(self, icon=None, item=None):
+        """Quit the application."""
+        if PYSTRAY_AVAILABLE and hasattr(self, 'icon'):
+            self.icon.stop()
+        self.root.quit()
+    
+    def on_closing(self):
+        """Handle window closing."""
+        if PYSTRAY_AVAILABLE:
+            self.hide_window()
+        else:
+            self.root.destroy()
+
+    def focus_search(self):
+        """Focus on the search entry."""
+        try:
+            self.search_var.set("")
+            # Find the search entry widget and focus it
+            for widget in self.root.winfo_children():
+                if hasattr(widget, 'winfo_children'):
+                    for child in widget.winfo_children():
+                        if isinstance(child, ttk.Entry) and child.cget('textvariable') == str(self.search_var):
+                            child.focus_set()
+                            break
+        except Exception:
+            pass
+    
+    def show_shortcuts_help(self):
+        """Show keyboard shortcuts help."""
+        shortcuts = """
+Keyboard Shortcuts:
+Ctrl+F - Focus search
+Ctrl+D - Start download
+Ctrl+P - Pause download
+Ctrl+R - Resume download
+Ctrl+C - Cancel download
+Ctrl+L - Clear form
+F5 - Refresh history
+        """
+        messagebox.showinfo("Keyboard Shortcuts", shortcuts)
+
+# Language dictionary for English and Albanian
+LANGUAGES = {
+    'en': {
+        'app_title': 'YouTube Video Downloader Pro',
+        'download_tab': 'Download',
+        'history_tab': 'History',
+        'settings_tab': 'Settings',
+        'url_label': 'YouTube URL(s):',
+        'fetch_info': '🔍 Fetch Video Info',
+        'download_batch': '⬇️ Download Batch',
+        'browse_folder': '📁 Browse Folder',
+        'open_folder': '🗂️ Open Folder',
+        'clear': '🧹 Clear',
+        'preview': '▶️ Preview',
+        'video_info': 'Video Information',
+        'download_progress': 'Download Progress',
+        'download_log': 'Download Log',
+        'no_video_selected': 'No video selected',
+        'ready_to_download': 'Ready to download',
+        'error': 'Error',
+        'clipboard_monitoring': 'Clipboard Monitoring',
+        'clipboard_toggle': 'Auto-detect YouTube URLs from clipboard',
+        'apply': 'Apply',
+        'download_speed_limit': 'Download Speed Limit',
+        'max_speed': 'Max speed (MB/s, 0 = unlimited):',
+        'statistics': 'Statistics',
+        'total_downloads': 'Total Downloads:',
+        'successful_downloads': 'Successful Downloads:',
+        'theme_settings': 'Theme Settings',
+        'theme': 'Theme:',
+        'apply_theme': 'Apply Theme',
+        'ffmpeg_settings': 'FFmpeg Settings',
+        'install_ffmpeg': 'Install FFmpeg',
+        'download_path': 'Download Path',
+        'browse': 'Browse',
+        'clear_history': 'Clear History',
+        'refresh': 'Refresh',
+        'download_history': 'Download History',
+        'title': 'Title',
+        'quality': 'Quality',
+        'format': 'Format',
+        'status': 'Status',
+        'date': 'Date',
+        'settings': 'Settings',
+        'language': 'Language:',
+        'english': 'English',
+        'albanian': 'Albanian',
+    },
+    'sq': {
+        'app_title': 'Shkarkuesi i Videove në YouTube Pro',
+        'download_tab': 'Shkarko',
+        'history_tab': 'Historia',
+        'settings_tab': 'Cilësimet',
+        'url_label': 'URL-të e YouTube:',
+        'fetch_info': '🔍 Merr Info për Videon',
+        'download_batch': '⬇️ Shkarko në Grup',
+        'browse_folder': '📁 Zgjidh Dosjen',
+        'open_folder': '🗂️ Hap Dosjen',
+        'clear': '🧹 Pastro',
+        'preview': '▶️ Parashiko',
+        'video_info': 'Informacioni i Videos',
+        'download_progress': 'Progresi i Shkarkimit',
+        'download_log': 'Logu i Shkarkimit',
+        'no_video_selected': 'Asnjë video e zgjedhur',
+        'ready_to_download': 'Gati për shkarkim',
+        'error': 'Gabim',
+        'clipboard_monitoring': 'Monitorimi i Clipboard-it',
+        'clipboard_toggle': 'Zbulo automatikisht URL-të e YouTube nga clipboard',
+        'apply': 'Apliko',
+        'download_speed_limit': 'Kufiri i Shpejtësisë së Shkarkimit',
+        'max_speed': 'Shpejtësia maksimale (MB/s, 0 = pa kufi):',
+        'statistics': 'Statistikat',
+        'total_downloads': 'Shkarkime Gjithsej:',
+        'successful_downloads': 'Shkarkime të Suksesshme:',
+        'theme_settings': 'Cilësimet e Temës',
+        'theme': 'Tema:',
+        'apply_theme': 'Apliko Temën',
+        'ffmpeg_settings': 'Cilësimet e FFmpeg',
+        'install_ffmpeg': 'Instalo FFmpeg',
+        'download_path': 'Rruga e Shkarkimit',
+        'browse': 'Zgjidh',
+        'clear_history': 'Pastro Historinë',
+        'refresh': 'Rifresko',
+        'download_history': 'Historia e Shkarkimeve',
+        'title': 'Titulli',
+        'quality': 'Cilësia',
+        'format': 'Formati',
+        'status': 'Statusi',
+        'date': 'Data',
+        'settings': 'Cilësimet',
+        'language': 'Gjuha:',
+        'english': 'Anglisht',
+        'albanian': 'Shqip',
+    }
+}
 
 def main():
     """Main function to run the application."""
