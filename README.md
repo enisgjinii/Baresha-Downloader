@@ -1,161 +1,252 @@
-# YouTube Video Downloader
+# 🎬 Baresha Downloader Pro
 
-A comprehensive Python application for downloading YouTube videos with both graphical user interface (GUI) and command-line interface (CLI) support, featuring a modern Sun Valley theme and integrated FFmpeg support.
+**A powerful, feature-rich YouTube video downloader with bilingual support and modern UI**
 
-## Features
+[![Python](https://img.shields.io/badge/Python-3.8+-blue.svg)](https://python.org)
+[![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![Version](https://img.shields.io/badge/Version-1.0.0-orange.svg)](https://github.com/baresha-downloader)
 
-- **Dual Interface**: Both GUI and CLI modes
-- **Modern UI**: Beautiful Sun Valley ttk theme with dark mode
-- **Video Information**: Fetch and display video details before downloading
-- **Quality Selection**: Choose from available video qualities
-- **Progress Tracking**: Real-time download progress with speed indicators
-- **Thumbnail Preview**: Display video thumbnails in GUI mode
-- **Custom Download Path**: Choose where to save downloaded videos
-- **FFmpeg Integration**: Local FFmpeg installation for better format support
-- **Error Handling**: Comprehensive error handling and user feedback
+## 🌟 Features
 
-## Installation
+### 🎯 Core Features
+- **Batch Download**: Download multiple videos simultaneously
+- **Multiple Formats**: MP4, MP3, WebM, M4A, AAC support
+- **Quality Selection**: From 360p to 4K Ultra HD
+- **Download Resume**: Automatically resume interrupted downloads
+- **Speed Limiting**: Control download speed to manage bandwidth
 
-1. **Clone or download this repository**
-2. **Install required dependencies**:
-   ```bash
-   pip install -r requirements.txt
-   ```
-3. **Install FFmpeg locally** (optional but recommended):
-   ```bash
-   python install_ffmpeg.py
-   ```
+### 🌍 Bilingual Support
+- **English & Albanian** interface
+- **Language switching** in settings
+- **Localized error messages** and tooltips
 
-## Usage
+### 🎨 Modern UI/UX
+- **Dark/Light theme** with system detection
+- **Sun Valley theme** support for modern look
+- **Animated progress indicators**
+- **System tray integration**
+- **Keyboard shortcuts** for power users
+- **Drag & drop** URL support
 
-### GUI Mode (Default)
-Run the application without arguments to launch the graphical interface:
+### 🔍 Advanced Features
+- **YouTube Search**: Find videos directly in the app
+- **Clipboard Monitoring**: Auto-detect YouTube URLs
+- **Download History**: Track and filter past downloads
+- **Thumbnail Previews**: See video thumbnails in history
+- **Download Notifications**: Desktop notifications on completion
+- **Queue Management**: Pause, resume, cancel downloads
+
+### 🛠️ Technical Features
+- **FFmpeg Integration**: High-quality audio/video processing
+- **Auto-update Checker**: Stay updated with latest version
+- **Error Handling**: User-friendly error messages
+- **Cross-platform**: Windows, macOS, Linux support
+
+## 📦 Installation
+
+### Prerequisites
+- Python 3.8 or higher
+- FFmpeg (optional, for enhanced features)
+
+### Quick Install
 ```bash
+# Clone the repository
+git clone https://github.com/your-username/baresha-downloader.git
+cd baresha-downloader
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Run the application
 python youtube_downloader.py
 ```
 
-**GUI Features:**
-- Modern Sun Valley dark theme
-- Enter YouTube URL in the text field
-- Click "Fetch Video Info" to get video details
-- Select desired quality from the dropdown
-- Choose download folder using "Browse Folder"
-- Click "Download" to start downloading
-- Monitor progress in real-time
-- FFmpeg status indicator
-
-### CLI Mode
-Run with a YouTube URL as argument:
+### Optional Dependencies
+For enhanced features, install additional packages:
 ```bash
-python youtube_downloader.py <youtube_url> [output_path] [quality]
+pip install pystray plyer
 ```
 
-**Examples:**
-```bash
-# Download with default settings
-python youtube_downloader.py https://www.youtube.com/watch?v=VIDEO_ID
+## 🚀 Usage
 
-# Download to specific folder
-python youtube_downloader.py https://www.youtube.com/watch?v=VIDEO_ID /path/to/folder
+### Basic Usage
+1. **Launch the app**: Run `python youtube_downloader.py`
+2. **Add URLs**: Paste YouTube URLs (one per line)
+3. **Fetch Info**: Click "Fetch Video Info" to preview
+4. **Select Quality**: Choose your preferred quality and format
+5. **Download**: Click "Download Batch" to start
 
-# Download with specific quality
-python youtube_downloader.py https://www.youtube.com/watch?v=VIDEO_ID /path/to/folder 720p
+### Advanced Features
+
+#### Batch Downloads
+- Add multiple URLs to download several videos at once
+- Monitor progress with the enhanced progress bar
+- Use Pause/Resume/Cancel controls
+
+#### YouTube Search
+- Use the search bar to find videos
+- Select from search results to add to batch
+- Search results are added automatically
+
+#### Clipboard Monitoring
+- Enable in Settings → Clipboard Monitoring
+- Automatically detects YouTube URLs copied to clipboard
+- Adds URLs to the batch automatically
+
+#### System Tray
+- Minimize to system tray for background operation
+- Right-click tray icon for quick actions
+- Desktop notifications for download completion
+
+### Keyboard Shortcuts
+| Shortcut | Action |
+|----------|--------|
+| `Ctrl+F` | Focus search |
+| `Ctrl+D` | Start download |
+| `Ctrl+P` | Pause download |
+| `Ctrl+R` | Resume download |
+| `Ctrl+C` | Cancel download |
+| `Ctrl+L` | Clear form |
+| `F5` | Refresh history |
+
+## 🎛️ Settings
+
+### Language Settings
+- Switch between English and Albanian
+- Changes apply immediately
+- All UI elements are localized
+
+### Download Settings
+- **Download Path**: Set default download folder
+- **Speed Limit**: Control maximum download speed
+- **Default Quality**: Set preferred video quality
+- **Default Format**: Set preferred output format
+
+### Theme Settings
+- **System**: Follows system theme
+- **Dark**: Always use dark theme
+- **Light**: Always use light theme
+
+### Clipboard Monitoring
+- Enable/disable automatic URL detection
+- Works with YouTube URLs copied to clipboard
+- Adds URLs automatically to batch
+
+## 📊 Features Overview
+
+| Feature | Status | Description |
+|---------|--------|-------------|
+| Batch Download | ✅ | Download multiple videos |
+| Quality Selection | ✅ | 360p to 4K support |
+| Format Support | ✅ | MP4, MP3, WebM, M4A, AAC |
+| Bilingual UI | ✅ | English & Albanian |
+| Dark Theme | ✅ | Modern dark interface |
+| System Tray | ✅ | Background operation |
+| Keyboard Shortcuts | ✅ | Power user features |
+| Download Resume | ✅ | Resume interrupted downloads |
+| Speed Limiting | ✅ | Bandwidth control |
+| YouTube Search | ✅ | Find videos in app |
+| Clipboard Monitor | ✅ | Auto-detect URLs |
+| Download History | ✅ | Track past downloads |
+| Thumbnail Preview | ✅ | See video thumbnails |
+| Notifications | ✅ | Desktop notifications |
+| Queue Management | ✅ | Pause/Resume/Cancel |
+| Error Handling | ✅ | User-friendly errors |
+| Auto-updates | ✅ | Version checking |
+
+## 🛠️ Technical Details
+
+### Architecture
+- **GUI Framework**: Tkinter with Sun Valley theme
+- **Download Engine**: yt-dlp for YouTube downloads
+- **Image Processing**: Pillow for thumbnails
+- **System Integration**: pystray for system tray
+- **Notifications**: plyer for desktop notifications
+
+### File Structure
 ```
-
-## Requirements
-
-- Python 3.7+
-- yt-dlp (for video downloading)
-- Pillow (for image processing)
-- requests (for HTTP requests)
-- sv-ttk (Sun Valley theme)
-- ffmpeg-python (for FFmpeg integration)
-- tkinter (usually included with Python)
-
-## How It Works
-
-The application uses `yt-dlp` (a fork of youtube-dl) to handle YouTube video downloading. It provides:
-
-1. **Video Information Extraction**: Fetches metadata like title, duration, and available formats
-2. **Format Selection**: Allows users to choose from available video qualities
-3. **Progress Monitoring**: Real-time download progress with speed indicators
-4. **FFmpeg Integration**: Local FFmpeg installation for better format support and conversions
-5. **Modern UI**: Sun Valley theme for a beautiful, modern interface
-
-## File Structure
-
-```
-Baresha-Downloader/
-├── youtube_downloader.py    # Main application file
-├── install_ffmpeg.py        # FFmpeg installer script
+baresha-downloader/
+├── youtube_downloader.py    # Main application
 ├── requirements.txt         # Python dependencies
-├── run.bat                 # Windows launcher
-├── run.sh                  # Linux/macOS launcher
-├── run.py                  # Python launcher
-├── ffmpeg/                 # Local FFmpeg installation
-│   ├── ffmpeg.exe
-│   ├── ffplay.exe
-│   └── ffprobe.exe
-└── README.md              # This documentation
+├── baresha-logo.jpg        # Application logo
+├── settings.json           # User settings
+├── download_history.json   # Download history
+├── install_ffmpeg.py      # FFmpeg installer
+├── run.bat                # Windows launcher
+├── run.sh                 # Linux/macOS launcher
+└── README.md              # This file
 ```
 
-## Features
+### Dependencies
+- **yt-dlp**: YouTube download engine
+- **Pillow**: Image processing
+- **requests**: HTTP requests
+- **sv-ttk**: Modern UI theme
+- **darkdetect**: System theme detection
+- **pystray**: System tray integration (optional)
+- **plyer**: Desktop notifications (optional)
 
-### Sun Valley Theme
-- Modern dark theme with beautiful styling
-- Consistent with modern UI design principles
-- Automatic fallback to dark theme if Sun Valley is not available
+## 🎨 Screenshots
 
-### FFmpeg Integration
-- Local FFmpeg installation in project directory
-- Automatic detection and configuration
-- Better format support and video processing
-- No system-wide installation required
+*[Screenshots will be added here showing the main interface, settings, and history tabs]*
 
-### Enhanced Download Capabilities
-- Support for various video formats
-- Audio extraction capabilities
-- Better quality selection with FFmpeg
-- Improved error handling
+## 🤝 Contributing
 
-## Troubleshooting
+We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) for details.
 
-### Common Issues
+### Development Setup
+```bash
+# Clone the repository
+git clone https://github.com/your-username/baresha-downloader.git
+cd baresha-downloader
 
-1. **"Module not found" errors**: Make sure to install dependencies with `pip install -r requirements.txt`
+# Create virtual environment
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
 
-2. **Download fails**: 
-   - Check your internet connection
-   - Verify the YouTube URL is valid and accessible
-   - Some videos may be region-restricted or private
+# Install dependencies
+pip install -r requirements.txt
 
-3. **GUI doesn't start**: 
-   - Ensure tkinter is installed (usually included with Python)
-   - On Linux, you might need to install `python3-tk`
+# Run in development mode
+python youtube_downloader.py
+```
 
-4. **FFmpeg not found**: 
-   - Run `python install_ffmpeg.py` to install FFmpeg locally
-   - The downloader will work without FFmpeg but with limited features
+## 📝 License
 
-5. **Permission errors**: 
-   - Make sure you have write permissions to the download directory
-   - Try running as administrator if needed
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-### Performance Tips
+## 🙏 Acknowledgments
 
-- Use wired internet connection for faster downloads
-- Close other bandwidth-heavy applications during download
-- Choose lower quality for faster downloads
-- FFmpeg installation provides better format support
+- **yt-dlp** team for the excellent YouTube download engine
+- **Sun Valley** theme creators for the modern UI
+- **Pillow** team for image processing capabilities
+- **Tkinter** community for the GUI framework
 
-## Legal Notice
+## 📞 Support
 
-This tool is for personal use only. Please respect YouTube's Terms of Service and only download content you have permission to download. The developers are not responsible for any misuse of this software.
+- **Issues**: [GitHub Issues](https://github.com/your-username/baresha-downloader/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/your-username/baresha-downloader/discussions)
+- **Email**: support@baresha-downloader.com
 
-## Contributing
+## 🔄 Changelog
 
-Feel free to submit issues, feature requests, or pull requests to improve this application.
+### Version 1.0.0
+- ✨ Initial release with bilingual support
+- ✨ Modern UI with Sun Valley theme
+- ✨ Batch download capabilities
+- ✨ System tray integration
+- ✨ Keyboard shortcuts
+- ✨ Download history and filtering
+- ✨ YouTube search functionality
+- ✨ Clipboard monitoring
+- ✨ Download notifications
+- ✨ Thumbnail previews
+- ✨ Queue management (pause/resume/cancel)
+- ✨ Auto-update checker
+- ✨ Download resume support
 
-## License
+---
 
-This project is open source and available under the MIT License. 
+**Made with ❤️ by the Baresha Team**
+
+*Download YouTube videos with style and ease!* 
