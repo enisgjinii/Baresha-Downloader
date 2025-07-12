@@ -1,0 +1,6 @@
+yt-dlp>=2023.12.30
+Pillow>=10.0.0
+requests>=2.31.0
+sv-ttk>=2.6.1
+ffmpeg-python>=0.2.0
+darkdetect>=0.8.0 
