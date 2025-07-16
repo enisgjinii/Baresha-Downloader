@@ -12,6 +12,10 @@ jobs:
   auto-release:
     runs-on: ubuntu-latest
     if: github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.merged == true)
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -114,6 +118,8 @@ jobs:
           git config --local user.name "GitHub Action"
           git tag -a "$new_tag" -m "Release $new_tag"
           git push origin "$new_tag"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Create Release Notes
         id: release_notes
