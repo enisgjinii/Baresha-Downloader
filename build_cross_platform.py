@@ -11,11 +11,12 @@ import shutil
 import platform
 from pathlib import Path
 
+
 def get_platform_info():
     """Get current platform information."""
     system = platform.system().lower()
     machine = platform.machine().lower()
-    
+
     if system == "windows":
         return "windows", "exe"
     elif system == "darwin":
@@ -25,10 +26,12 @@ def get_platform_info():
     else:
         return "unknown", "bin"
 
+
 def install_pyinstaller():
     """Install PyInstaller if not already installed."""
     try:
         import PyInstaller
+
         print("PyInstaller is already installed.")
         return True
     except ImportError:
@@ -41,27 +44,28 @@ def install_pyinstaller():
             print(f"Failed to install PyInstaller: {e}")
             return False
 
+
 def create_spec_file(platform_name, extension):
     """Create a PyInstaller spec file for the application."""
-    
+
     # Platform-specific configurations
     platform_configs = {
         "windows": {
             "console": False,
             "icon": "baresha-logo.jpg",
             "datas": [
-                ('baresha-logo.jpg', '.'),
-                ('ffmpeg', 'ffmpeg'),
-                ('install_ffmpeg.py', '.'),
-            ]
+                ("baresha-logo.jpg", "."),
+                ("ffmpeg", "ffmpeg"),
+                ("install_ffmpeg.py", "."),
+            ],
         },
         "macos": {
             "console": False,
             "icon": "baresha-logo.jpg",
             "datas": [
-                ('baresha-logo.jpg', '.'),
-                ('ffmpeg', 'ffmpeg'),
-                ('install_ffmpeg.py', '.'),
+                ("baresha-logo.jpg", "."),
+                ("ffmpeg", "ffmpeg"),
+                ("install_ffmpeg.py", "."),
             ],
             "codesign_identity": None,
             "entitlements_file": None,
@@ -70,16 +74,16 @@ def create_spec_file(platform_name, extension):
             "console": False,
             "icon": "baresha-logo.jpg",
             "datas": [
-                ('baresha-logo.jpg', '.'),
-                ('ffmpeg', 'ffmpeg'),
-                ('install_ffmpeg.py', '.'),
-            ]
-        }
+                ("baresha-logo.jpg", "."),
+                ("ffmpeg", "ffmpeg"),
+                ("install_ffmpeg.py", "."),
+            ],
+        },
     }
-    
+
     config = platform_configs.get(platform_name, platform_configs["linux"])
-    
-    spec_content = f'''# -*- mode: python ; coding: utf-8 -*-
+
+    spec_content = f"""# -*- mode: python ; coding: utf-8 -*-
 
 block_cipher = None
 
@@ -151,41 +155,38 @@ exe = EXE(
     entitlements_file={config.get("entitlements_file", "None")},
     icon='{config["icon"]}',
 )
-'''
-    
-    spec_filename = f'Baresha-Downloader-{platform_name}.spec'
-    with open(spec_filename, 'w') as f:
+"""
+
+    spec_filename = f"Baresha-Downloader-{platform_name}.spec"
+    with open(spec_filename, "w") as f:
         f.write(spec_content)
     print(f"Created PyInstaller spec file: {spec_filename}")
     return spec_filename
 
+
 def build_executable(platform_name, extension):
     """Build the executable using PyInstaller."""
     print(f"Building executable for {platform_name}...")
-    
+
     # Create spec file
     spec_filename = create_spec_file(platform_name, extension)
-    
+
     # Build the executable
     try:
-        subprocess.check_call([
-            sys.executable, "-m", "PyInstaller",
-            "--clean",
-            "--noconfirm",
-            spec_filename
-        ])
+        subprocess.check_call([sys.executable, "-m", "PyInstaller", "--clean", "--noconfirm", spec_filename])
         print(f"Executable built successfully for {platform_name}!")
         return True
     except subprocess.CalledProcessError as e:
         print(f"Failed to build executable for {platform_name}: {e}")
         return False
 
+
 def create_installer_scripts(platform_name, extension):
     """Create installer scripts for the current platform."""
-    
+
     if platform_name == "windows":
         # Windows installer
-        installer_content = '''@echo off
+        installer_content = """@echo off
 echo Baresha Downloader - Installer
 echo ==============================
 
@@ -212,14 +213,14 @@ echo The application has been installed to: %INSTALL_DIR%
 echo Desktop shortcut created.
 echo Start menu shortcut created.
 pause
-'''
-        with open('install.bat', 'w') as f:
+"""
+        with open("install.bat", "w") as f:
             f.write(installer_content)
         print("Created Windows installer script: install.bat")
-        
+
     elif platform_name == "macos":
         # macOS installer
-        installer_content = '''#!/bin/bash
+        installer_content = """#!/bin/bash
 echo "Baresha Downloader - Installer"
 echo "=============================="
 
@@ -244,16 +245,16 @@ echo "The application has been installed to: $INSTALL_DIR"
 echo "Desktop shortcut created."
 echo ""
 echo "You can now launch Baresha Downloader from Applications or Desktop."
-'''
-        with open('install.sh', 'w') as f:
+"""
+        with open("install.sh", "w") as f:
             f.write(installer_content)
         # Make executable
-        os.chmod('install.sh', 0o755)
+        os.chmod("install.sh", 0o755)
         print("Created macOS installer script: install.sh")
-        
+
     elif platform_name == "linux":
         # Linux installer
-        installer_content = '''#!/bin/bash
+        installer_content = """#!/bin/bash
 echo "Baresha Downloader - Installer"
 echo "=============================="
 
@@ -294,18 +295,19 @@ echo "Installation completed!"
 echo "The application has been installed to: $INSTALL_DIR"
 echo "Desktop shortcut created."
 echo "Application menu entry created."
-'''
-        with open('install.sh', 'w') as f:
+"""
+        with open("install.sh", "w") as f:
             f.write(installer_content)
         # Make executable
-        os.chmod('install.sh', 0o755)
+        os.chmod("install.sh", 0o755)
         print("Created Linux installer script: install.sh")
+
 
 def create_build_script(platform_name):
     """Create a platform-specific build script."""
-    
+
     if platform_name == "windows":
-        build_script = '''@echo off
+        build_script = """@echo off
 echo Baresha Downloader - Building Executable
 echo ========================================
 
@@ -342,14 +344,14 @@ echo.
 echo To install the application, run: install.bat
 echo.
 pause
-'''
-        with open('build.bat', 'w') as f:
+"""
+        with open("build.bat", "w") as f:
             f.write(build_script)
         print("Created Windows build script: build.bat")
-        
+
     else:
         # Unix-like systems (macOS/Linux)
-        build_script = f'''#!/bin/bash
+        build_script = f"""#!/bin/bash
 echo "Baresha Downloader - Building Executable"
 echo "========================================"
 
@@ -382,48 +384,50 @@ echo "- install.sh (Installation script)"
 echo ""
 echo "To install the application, run: ./install.sh"
 echo ""
-'''
-        with open('build.sh', 'w') as f:
+"""
+        with open("build.sh", "w") as f:
             f.write(build_script)
         # Make executable
-        os.chmod('build.sh', 0o755)
+        os.chmod("build.sh", 0o755)
         print("Created Unix build script: build.sh")
+
 
 def main():
     """Main build function."""
     platform_name, extension = get_platform_info()
-    
+
     print(f"Baresha Downloader - Cross-Platform Executable Builder")
     print(f"Platform: {platform_name}")
     print("=" * 50)
-    
+
     # Install PyInstaller
     if not install_pyinstaller():
         print("Failed to install PyInstaller. Exiting.")
         return 1
-    
+
     # Build executable
     if not build_executable(platform_name, extension):
         print("Failed to build executable. Exiting.")
         return 1
-    
+
     # Create installer scripts
     create_installer_scripts(platform_name, extension)
-    
+
     # Create build script
     create_build_script(platform_name)
-    
+
     print(f"\nBuild completed successfully for {platform_name}!")
     print(f"Executable location: dist/Baresha-Downloader{'.exe' if platform_name == 'windows' else ''}")
-    
+
     if platform_name == "windows":
         print("Installer script: install.bat")
         print("\nTo install the application, run: install.bat")
     else:
         print("Installer script: install.sh")
         print("\nTo install the application, run: ./install.sh")
-    
+
     return 0
 
+
 if __name__ == "__main__":
-    sys.exit(main()) 
+    sys.exit(main())

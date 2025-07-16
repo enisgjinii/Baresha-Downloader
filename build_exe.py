@@ -9,10 +9,12 @@ import subprocess
 import shutil
 from pathlib import Path
 
+
 def install_pyinstaller():
     """Install PyInstaller if not already installed."""
     try:
         import PyInstaller
+
         print("PyInstaller is already installed.")
         return True
     except ImportError:
@@ -25,9 +27,10 @@ def install_pyinstaller():
             print(f"Failed to install PyInstaller: {e}")
             return False
 
+
 def create_spec_file():
     """Create a PyInstaller spec file for the application."""
-    spec_content = '''# -*- mode: python ; coding: utf-8 -*-
+    spec_content = """# -*- mode: python ; coding: utf-8 -*-
 
 block_cipher = None
 
@@ -103,36 +106,33 @@ exe = EXE(
     entitlements_file=None,
     icon='baresha-logo.jpg',
 )
-'''
-    
-    with open('Baresha-Downloader.spec', 'w') as f:
+"""
+
+    with open("Baresha-Downloader.spec", "w") as f:
         f.write(spec_content)
     print("Created PyInstaller spec file: Baresha-Downloader.spec")
+
 
 def build_executable():
     """Build the executable using PyInstaller."""
     print("Building executable...")
-    
+
     # Create spec file
     create_spec_file()
-    
+
     # Build the executable
     try:
-        subprocess.check_call([
-            sys.executable, "-m", "PyInstaller",
-            "--clean",
-            "--noconfirm",
-            "Baresha-Downloader.spec"
-        ])
+        subprocess.check_call([sys.executable, "-m", "PyInstaller", "--clean", "--noconfirm", "Baresha-Downloader.spec"])
         print("Executable built successfully!")
         return True
     except subprocess.CalledProcessError as e:
         print(f"Failed to build executable: {e}")
         return False
 
+
 def create_installer_script():
     """Create a simple installer script."""
-    installer_content = '''@echo off
+    installer_content = """@echo off
 echo Baresha Downloader - Installer
 echo ==============================
 
@@ -159,36 +159,38 @@ echo The application has been installed to: %INSTALL_DIR%
 echo Desktop shortcut created.
 echo Start menu shortcut created.
 pause
-'''
-    
-    with open('install.bat', 'w') as f:
+"""
+
+    with open("install.bat", "w") as f:
         f.write(installer_content)
     print("Created installer script: install.bat")
+
 
 def main():
     """Main build function."""
     print("Baresha Downloader - Executable Builder")
     print("=" * 40)
-    
+
     # Install PyInstaller
     if not install_pyinstaller():
         print("Failed to install PyInstaller. Exiting.")
         return 1
-    
+
     # Build executable
     if not build_executable():
         print("Failed to build executable. Exiting.")
         return 1
-    
+
     # Create installer script
     create_installer_script()
-    
+
     print("\nBuild completed successfully!")
     print("Executable location: dist/Baresha-Downloader.exe")
     print("Installer script: install.bat")
     print("\nTo install the application, run: install.bat")
-    
+
     return 0
 
+
 if __name__ == "__main__":
-    sys.exit(main()) 
+    sys.exit(main())
