@@ -33,16 +33,23 @@ jobs:
         id: check_release
         run: |
           # Check if this is a release commit
-          if [[ "${{ github.event.head_commit.message }}" =~ ^(feat|fix|BREAKING CHANGE|revert) ]]; then
-            echo "release=true" >> $GITHUB_OUTPUT
-            echo "commit_type=release" >> $GITHUB_OUTPUT
-          elif [[ "${{ github.event.head_commit.message }}" =~ ^(chore|docs|style|refactor|test|ci) ]]; then
-            echo "release=false" >> $GITHUB_OUTPUT
-            echo "commit_type=non_release" >> $GITHUB_OUTPUT
-          else
-            echo "release=false" >> $GITHUB_OUTPUT
-            echo "commit_type=unknown" >> $GITHUB_OUTPUT
-          fi
+          commit_msg="${{ github.event.head_commit.message }}"
+          
+          # Use case statement instead of regex for better compatibility
+          case "$commit_msg" in
+            feat:*|fix:*|BREAKING CHANGE:*|revert:*)
+              echo "release=true" >> $GITHUB_OUTPUT
+              echo "commit_type=release" >> $GITHUB_OUTPUT
+              ;;
+            chore:*|docs:*|style:*|refactor:*|test:*|ci:*)
+              echo "release=false" >> $GITHUB_OUTPUT
+              echo "commit_type=non_release" >> $GITHUB_OUTPUT
+              ;;
+            *)
+              echo "release=false" >> $GITHUB_OUTPUT
+              echo "commit_type=unknown" >> $GITHUB_OUTPUT
+              ;;
+          esac
 
       - name: Determine version bump
         id: version_bump
@@ -51,15 +58,21 @@ jobs:
           # Analyze commit message to determine version bump
           commit_msg="${{ github.event.head_commit.message }}"
           
-          if [[ "$commit_msg" =~ ^BREAKING CHANGE: ]] || [[ "$commit_msg" =~ \(.+\)!:.+ ]]; then
-            echo "bump=major" >> $GITHUB_OUTPUT
-          elif [[ "$commit_msg" =~ ^feat ]]; then
-            echo "bump=minor" >> $GITHUB_OUTPUT
-          elif [[ "$commit_msg" =~ ^fix ]] || [[ "$commit_msg" =~ ^revert ]]; then
-            echo "bump=patch" >> $GITHUB_OUTPUT
-          else
-            echo "bump=patch" >> $GITHUB_OUTPUT
-          fi
+          # Use case statement instead of regex for better compatibility
+          case "$commit_msg" in
+            BREAKING CHANGE:*|*"!:"*)
+              echo "bump=major" >> $GITHUB_OUTPUT
+              ;;
+            feat:*)
+              echo "bump=minor" >> $GITHUB_OUTPUT
+              ;;
+            fix:*|revert:*)
+              echo "bump=patch" >> $GITHUB_OUTPUT
+              ;;
+            *)
+              echo "bump=patch" >> $GITHUB_OUTPUT
+              ;;
+          esac
 
       - name: Get current version
         id: current_version
