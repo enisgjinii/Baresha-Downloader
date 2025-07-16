@@ -1205,7 +1205,7 @@ class YouTubeDownloaderGUI:
                     self.downloader.add_to_history(url, title, quality, format_type)
                     self.root.after(0, lambda: self.notify(self.lang['app_title'], f"{title} - Download completed!"))
                 except Exception as e:
-                    self.root.after(0, lambda: self.log_message(f"Failed: {title} ({str(e)})"))
+                    self.root.after(0, lambda e=e: self.log_message(f"Failed: {title} ({str(e)})"))
                     self.downloader.add_to_history(url, title, quality, format_type, "failed")
                     self.root.after(0, lambda: self.notify(self.lang['app_title'], f"{title} - Download failed!"))
                 self.root.after(0, self.refresh_history)
@@ -1972,7 +1972,7 @@ F5 - Refresh history
                     self.root.after(0, lambda: self.batch_log_message(f"Downloaded: {title}"))
                     self.downloader.add_to_history(url, title, quality, format_type)
                 except Exception as e:
-                    self.root.after(0, lambda: self.batch_log_message(f"Failed: {title} ({str(e)})", error=True))
+                    self.root.after(0, lambda e=e: self.batch_log_message(f"Failed: {title} ({str(e)})", error=True))
                     self.downloader.add_to_history(url, title, quality, format_type, "failed")
             
             self.root.after(0, lambda: self.batch_download_btn.config(state=tk.NORMAL))
