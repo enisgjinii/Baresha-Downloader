@@ -119,7 +119,7 @@ jobs:
           git tag -a "$new_tag" -m "Release $new_tag"
           git push origin "$new_tag"
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.PAT_TOKEN }}
 
       - name: Create Release Notes
         id: release_notes
