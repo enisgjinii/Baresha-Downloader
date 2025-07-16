@@ -194,6 +194,32 @@ baresha-downloader/
 
 We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) for details.
 
+### 🚀 Automatic Releases
+
+This project uses automatic releases based on conventional commit messages. When you push commits with specific formats, GitHub Actions will automatically create releases:
+
+**Commit Types that Trigger Releases:**
+- `feat: new feature` → Minor version bump (1.0.0 → 1.1.0)
+- `fix: bug fix` → Patch version bump (1.0.0 → 1.0.1)
+- `BREAKING CHANGE: major change` → Major version bump (1.0.0 → 2.0.0)
+
+**Examples:**
+```bash
+# Automatic minor release
+git commit -m "feat: add playlist download support"
+git push origin main
+
+# Automatic patch release
+git commit -m "fix: resolve download resume issue"
+git push origin main
+
+# Manual release (traditional)
+git tag -a v1.1.0 -m "Release v1.1.0"
+git push origin v1.1.0
+```
+
+For detailed information, see our [Release Guide](RELEASE_GUIDE.md).
+
 ### Development Setup
 ```bash
 # Clone the repository

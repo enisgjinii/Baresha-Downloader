@@ -79,6 +79,114 @@ jobs:
     needs: [build-windows, build-macos, build-linux]
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: Generate Release Notes
+        id: release_notes
+        run: |
+          # Get the tag name
+          TAG_NAME="${GITHUB_REF#refs/tags/}"
+          VERSION="${TAG_NAME#v}"
+          
+          # Get commits since last tag
+          PREVIOUS_TAG=$(git describe --tags --abbrev=0 HEAD~1 2>/dev/null || echo "")
+          
+          if [ -z "$PREVIOUS_TAG" ]; then
+            # First release - get all commits
+            COMMITS=$(git log --oneline --pretty=format:"- %s" HEAD)
+          else
+            # Get commits since last tag
+            COMMITS=$(git log --oneline --pretty=format:"- %s" ${PREVIOUS_TAG}..HEAD)
+          fi
+          
+          # Read changelog section if it exists
+          CHANGELOG_SECTION=""
+          if [ -f "CHANGELOG.md" ]; then
+            # Extract the section for this version from CHANGELOG.md
+            CHANGELOG_SECTION=$(awk -v version="$VERSION" '
+              /^## \['"$VERSION"'\]/ { in_section=1; print; next }
+              /^## \[/ { in_section=0 }
+              in_section { print }
+            ' CHANGELOG.md)
+          fi
+          
+          # Create comprehensive release notes
+          cat > release_notes.md << EOF
+          # Release $TAG_NAME
+          
+          ## 🎉 What's New
+          
+          $CHANGELOG_SECTION
+          
+          ## 📋 Changes
+          
+          $COMMITS
+          
+          ## 🚀 Installation
+          
+          Download the latest release for your platform:
+          
+          ### Windows
+          - **Baresha-Downloader.exe** - Standalone executable
+          - No installation required, just run the file
+          
+          ### macOS
+          - **Baresha-Downloader.app** - macOS application bundle
+          - Drag to Applications folder or run directly
+          
+          ### Linux
+          - **Baresha-Downloader** - Linux executable
+          - Make executable: \`chmod +x Baresha-Downloader\`
+          - Run: \`./Baresha-Downloader\`
+          
+          ## ✨ Features
+          
+          - 🎬 **YouTube Video Downloading** with multiple quality options
+          - 📦 **Batch Download Support** for multiple videos
+          - 🌍 **Bilingual Interface** (English/Albanian)
+          - 🎨 **Modern UI** with dark/light themes
+          - 📱 **System Tray Integration** for background operation
+          - 📚 **Download History** and management
+          - 🔍 **YouTube Search** directly in the app
+          - 📋 **Clipboard Monitoring** for automatic URL detection
+          - ⚡ **Download Resume** for interrupted downloads
+          - 🎛️ **Speed Limiting** for bandwidth control
+          - ⌨️ **Keyboard Shortcuts** for power users
+          - 🔔 **Desktop Notifications** on completion
+          
+          ## 🛠️ System Requirements
+          
+          - **Windows**: Windows 10 or later
+          - **macOS**: macOS 10.14 or later
+          - **Linux**: Ubuntu 18.04+ or similar
+          - **Python**: 3.8+ (for development)
+          
+          ## 📖 Documentation
+          
+          - [User Guide](https://github.com/${{ github.repository }}/blob/main/GUIDE.md)
+          - [Contributing Guide](https://github.com/${{ github.repository }}/blob/main/CONTRIBUTING.md)
+          - [Security Policy](https://github.com/${{ github.repository }}/blob/main/SECURITY.md)
+          
+          ## 🤝 Support
+          
+          - 📝 [Issues](https://github.com/${{ github.repository }}/issues)
+          - 💬 [Discussions](https://github.com/${{ github.repository }}/discussions)
+          - 📧 Email: support@baresha-downloader.com
+          
+          ---
+          
+          **Made with ❤️ by the Baresha Team**
+          
+          For more information, visit: https://github.com/${{ github.repository }}
+          EOF
+          
+          echo "release_notes<<EOF" >> $GITHUB_OUTPUT
+          cat release_notes.md >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
       - name: Download Windows artifact
         uses: actions/download-artifact@v4
         with:
@@ -94,6 +202,7 @@ jobs:
         with:
           name: Baresha-Downloader-linux
           path: ./release-assets/
+      
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
@@ -101,5 +210,8 @@ jobs:
             release-assets/Baresha-Downloader.exe
             release-assets/Baresha-Downloader.app
             release-assets/Baresha-Downloader
+          body: ${{ steps.release_notes.outputs.release_notes }}
+          draft: false
+          prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} 

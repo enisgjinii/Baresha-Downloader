@@ -1,0 +1,195 @@
+name: Auto Release
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+    types: [closed]
+
+jobs:
+  auto-release:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.merged == true)
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install semantic-release
+
+      - name: Check for release
+        id: check_release
+        run: |
+          # Check if this is a release commit
+          if [[ "${{ github.event.head_commit.message }}" =~ ^(feat|fix|BREAKING CHANGE|revert)(\(.+\))?: ]]; then
+            echo "release=true" >> $GITHUB_OUTPUT
+            echo "commit_type=release" >> $GITHUB_OUTPUT
+          elif [[ "${{ github.event.head_commit.message }}" =~ ^(chore|docs|style|refactor|test|ci)(\(.+\))?: ]]; then
+            echo "release=false" >> $GITHUB_OUTPUT
+            echo "commit_type=non_release" >> $GITHUB_OUTPUT
+          else
+            echo "release=false" >> $GITHUB_OUTPUT
+            echo "commit_type=unknown" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Determine version bump
+        id: version_bump
+        if: steps.check_release.outputs.release == 'true'
+        run: |
+          # Analyze commit message to determine version bump
+          commit_msg="${{ github.event.head_commit.message }}"
+          
+          if [[ "$commit_msg" =~ ^BREAKING CHANGE: ]] || [[ "$commit_msg" =~ \(.+\)!:.+ ]]; then
+            echo "bump=major" >> $GITHUB_OUTPUT
+          elif [[ "$commit_msg" =~ ^feat(\(.+\))?: ]]; then
+            echo "bump=minor" >> $GITHUB_OUTPUT
+          elif [[ "$commit_msg" =~ ^fix(\(.+\))?: ]] || [[ "$commit_msg" =~ ^revert(\(.+\))?: ]]; then
+            echo "bump=patch" >> $GITHUB_OUTPUT
+          else
+            echo "bump=patch" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Get current version
+        id: current_version
+        run: |
+          # Get the latest tag
+          latest_tag=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
+          echo "current_version=${latest_tag#v}" >> $GITHUB_OUTPUT
+          echo "current_tag=$latest_tag" >> $GITHUB_OUTPUT
+
+      - name: Calculate new version
+        id: new_version
+        if: steps.check_release.outputs.release == 'true'
+        run: |
+          current_version="${{ steps.current_version.outputs.current_version }}"
+          bump_type="${{ steps.version_bump.outputs.bump }}"
+          
+          # Parse current version
+          IFS='.' read -r major minor patch <<< "$current_version"
+          
+          # Calculate new version based on bump type
+          case $bump_type in
+            "major")
+              new_major=$((major + 1))
+              new_minor=0
+              new_patch=0
+              ;;
+            "minor")
+              new_major=$major
+              new_minor=$((minor + 1))
+              new_patch=0
+              ;;
+            "patch")
+              new_major=$major
+              new_minor=$minor
+              new_patch=$((patch + 1))
+              ;;
+          esac
+          
+          new_version="${new_major}.${new_minor}.${new_patch}"
+          echo "new_version=$new_version" >> $GITHUB_OUTPUT
+          echo "new_tag=v$new_version" >> $GITHUB_OUTPUT
+
+      - name: Create and push tag
+        if: steps.check_release.outputs.release == 'true'
+        run: |
+          new_tag="${{ steps.new_version.outputs.new_tag }}"
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git tag -a "$new_tag" -m "Release $new_tag"
+          git push origin "$new_tag"
+
+      - name: Create Release Notes
+        id: release_notes
+        if: steps.check_release.outputs.release == 'true'
+        run: |
+          new_tag="${{ steps.new_version.outputs.new_tag }}"
+          current_tag="${{ steps.current_version.outputs.current_tag }}"
+          
+          # Generate release notes from commits
+          if [ "$current_tag" = "v0.0.0" ]; then
+            # First release - get all commits
+            commits=$(git log --oneline --pretty=format:"- %s" HEAD)
+          else
+            # Get commits since last tag
+            commits=$(git log --oneline --pretty=format:"- %s" ${current_tag}..HEAD)
+          fi
+          
+          # Create release notes
+          cat > release_notes.md << EOF
+          # Release $new_tag
+          
+          ## Changes
+          
+          $commits
+          
+          ## Installation
+          
+          Download the latest release for your platform:
+          - Windows: Baresha-Downloader.exe
+          - macOS: Baresha-Downloader.app
+          - Linux: Baresha-Downloader
+          
+          ## Features
+          
+          - YouTube video downloading with multiple quality options
+          - Batch download support
+          - Bilingual interface (English/Albanian)
+          - Modern UI with dark/light themes
+          - System tray integration
+          - Download history and management
+          
+          For more information, visit: https://github.com/${{ github.repository }}
+          EOF
+          
+          echo "release_notes<<EOF" >> $GITHUB_OUTPUT
+          cat release_notes.md >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Create GitHub Release
+        if: steps.check_release.outputs.release == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.new_version.outputs.new_tag }}
+          name: Release ${{ steps.new_version.outputs.new_tag }}
+          body: ${{ steps.release_notes.outputs.release_notes }}
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Comment on PR
+        if: github.event_name == 'pull_request' && steps.check_release.outputs.release == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `🎉 **Auto-release created!**\n\nVersion \`${{ steps.new_version.outputs.new_tag }}\` has been automatically released based on your commit message.\n\n[View Release](https://github.com/${{ github.repository }}/releases/tag/${{ steps.new_version.outputs.new_tag }})`
+            })
+
+      - name: Comment on PR (no release)
+        if: github.event_name == 'pull_request' && steps.check_release.outputs.release == 'false'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `✅ **PR merged successfully!**\n\nNo automatic release was created because the commit message doesn't follow the conventional commit format.\n\nTo trigger a release, use one of these commit message formats:\n- \`feat: new feature\` (minor version bump)\n- \`fix: bug fix\` (patch version bump)\n- \`BREAKING CHANGE: major change\` (major version bump)`
+            }) 

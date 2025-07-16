@@ -1,0 +1,190 @@
+[build-system]
+requires = ["setuptools>=45", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "baresha-downloader"
+version = "1.0.0"
+description = "A powerful, feature-rich YouTube video downloader with bilingual support and modern UI"
+readme = "README.md"
+license = {text = "MIT"}
+authors = [
+    {name = "Baresha Team", email = "support@baresha-downloader.com"}
+]
+maintainers = [
+    {name = "Baresha Team", email = "support@baresha-downloader.com"}
+]
+keywords = ["youtube", "downloader", "video", "bilingual", "gui", "tkinter"]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Topic :: Multimedia :: Video",
+    "Topic :: Internet :: WWW/HTTP",
+    "Topic :: Desktop Environment",
+    "Topic :: Utilities",
+]
+requires-python = ">=3.8"
+dependencies = [
+    "yt-dlp>=2023.12.30",
+    "Pillow>=10.0.0",
+    "requests>=2.31.0",
+    "sv-ttk>=2.5.0",
+    "darkdetect>=0.8.0",
+    "pystray>=0.19.4",
+    "plyer>=2.1.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+    "flake8>=6.0.0",
+    "black>=23.0.0",
+    "bandit>=1.7.0",
+    "safety>=2.3.0",
+    "pip-review>=1.1.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/enisgjinii/Baresha-Downloader"
+Documentation = "https://github.com/enisgjinii/Baresha-Downloader/blob/main/GUIDE.md"
+Repository = "https://github.com/enisgjinii/Baresha-Downloader"
+"Bug Tracker" = "https://github.com/enisgjinii/Baresha-Downloader/issues"
+"Release Notes" = "https://github.com/enisgjinii/Baresha-Downloader/blob/main/CHANGELOG.md"
+
+[project.scripts]
+baresha-downloader = "youtube_downloader:main"
+
+[tool.setuptools.packages.find]
+include = ["*"]
+
+[tool.black]
+line-length = 127
+target-version = ['py38', 'py39', 'py310', 'py311']
+include = '\.pyi?$'
+extend-exclude = '''
+/(
+  # directories
+  \.eggs
+  | \.git
+  | \.hg
+  | \.mypy_cache
+  | \.tox
+  | \.venv
+  | build
+  | dist
+)/
+'''
+
+[tool.flake8]
+max-line-length = 127
+extend-ignore = ["E203", "W503"]
+exclude = [
+    ".git",
+    "__pycache__",
+    "build",
+    "dist",
+    ".venv",
+    "venv",
+]
+
+[tool.bandit]
+exclude_dirs = ["tests", "venv", ".venv"]
+skips = ["B101", "B601"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py", "*_test.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = [
+    "--strict-markers",
+    "--strict-config",
+    "--cov=.",
+    "--cov-report=term-missing",
+    "--cov-report=html",
+    "--cov-report=xml",
+]
+
+[tool.coverage.run]
+source = ["."]
+omit = [
+    "*/tests/*",
+    "*/test_*",
+    "*/venv/*",
+    "*/.venv/*",
+    "*/build/*",
+    "*/dist/*",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "if self.debug:",
+    "if settings.DEBUG",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if 0:",
+    "if __name__ == .__main__.:",
+    "class .*\\bProtocol\\):",
+    "@(abc\\.)?abstractmethod",
+]
+
+# Semantic Release Configuration
+[tool.semantic_release]
+version_variable = [
+    "youtube_downloader.py:__version__",
+    "pyproject.toml:version",
+]
+version_toml = ["pyproject.toml:tool.poetry.version"]
+version_pattern = "MAJOR.MINOR.PATCH"
+version_dev = "MAJOR.MINOR.PATCH-dev"
+version_local = "MAJOR.MINOR.PATCH+{branch}.{build}"
+build_command = "pip install build && python -m build"
+dist_path = "dist/"
+upload_to_pypi = false
+upload_to_release = true
+upload_to_repository = false
+remove_dist = false
+commit_parser = "angular"
+commit_parser_options = {
+    "body_patterns": ["^BREAKING CHANGE: (.*)"],
+    "revert_patterns": ["^Revert \"(.*)\"", "^Revert '(.*)'"],
+}
+changelog_file = "CHANGELOG.md"
+changelog_components = [
+    "angular",
+]
+changelog_exclude_commit_patterns = [
+    "^chore\\(release\\): .*",
+    "^chore\\(deps\\): .*",
+]
+changelog_sections = [
+    "angular",
+]
+changelog_inner_merge_message = "chore(release): {version} [skip ci]"
+changelog_merge_prereleases = false
+changelog_path = "CHANGELOG.md"
+changelog_encoding = "utf-8"
+changelog_components = [
+    "angular",
+]
+changelog_exclude_commit_patterns = [
+    "^chore\\(release\\): .*",
+    "^chore\\(deps\\): .*",
+]
+changelog_sections = [
+    "angular",
+]
+changelog_inner_merge_message = "chore(release): {version} [skip ci]"
+changelog_merge_prereleases = false
+changelog_path = "CHANGELOG.md"
+changelog_encoding = "utf-8" 
